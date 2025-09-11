@@ -29,6 +29,7 @@ export interface DailyDetail {
   day: string;
   hours: number;
   rawTime: string;
+  outOfSederHours?: number;
 }
 
 export interface StipendResult {
@@ -36,6 +37,7 @@ export interface StipendResult {
   totalHours: number;
   stipend: number;
   details?: DailyDetail[];
+  totalOutOfSederHours?: number;
 }
 
 export interface ParseResult {

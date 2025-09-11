@@ -21,12 +21,17 @@ const timeStringToDecimalHours = (timeStr: string): number => {
 
 /**
  * Processes a single sheet from the XLSX file, corresponding to one scholar.
- * It now parses multiple entry/exit pairs per day.
+ * It now parses multiple entry/exit pairs per day and considers Seder times.
  * @param rows An array of arrays representing the sheet.
  * @param sheetName The name of the sheet, which is the scholar's name.
+ * @param sedarim An array of Seder time ranges.
  * @returns An object with the scholar's name, attendance details, and the month/year.
  */
-const processSingleScholarSheet = (rows: (string|number)[][], sheetName: string): { name: string; details: DailyDetail[]; monthYear: string } => {
+const processSingleScholarSheet = (
+    rows: (string|number)[][], 
+    sheetName: string,
+    sedarim: { start: number, end: number }[]
+): { name: string; details: DailyDetail[]; monthYear: string } => {
     const name = sheetName;
     let monthYear = '';
     const details: DailyDetail[] = [];
@@ -60,7 +65,6 @@ const processSingleScholarSheet = (rows: (string|number)[][], sheetName: string)
     let dayColIndex = -1;
     const entryExitPairs: { entry: number; exit: number }[] = [];
 
-    // Find the header row (contains 'יום' and 'כניסה')
     for (let i = 0; i < 15; i++) {
         const row = rows[i];
         if (row && row.some(c => String(c).trim() === 'יום') && row.some(c => String(c).trim() === 'כניסה')) {
@@ -76,7 +80,6 @@ const processSingleScholarSheet = (rows: (string|number)[][], sheetName: string)
     const headerRow = rows[headerRowIndex];
     dayColIndex = headerRow.findIndex(cell => String(cell).trim() === 'יום');
 
-    // Robustly find and pair 'כניסה' and 'יציאה' columns
     const entryIndices = headerRow.map((c, i) => String(c).trim() === 'כניסה' ? i : -1).filter(i => i !== -1);
     const exitIndices = headerRow.map((c, i) => String(c).trim() === 'יציאה' ? i : -1).filter(i => i !== -1);
     const usedExitIndices = new Set<number>();
@@ -84,7 +87,6 @@ const processSingleScholarSheet = (rows: (string|number)[][], sheetName: string)
     entryIndices.forEach(entryIndex => {
         let bestExitIndex = -1;
         let minDistance = Infinity;
-
         exitIndices.forEach(exitIndex => {
             if (!usedExitIndices.has(exitIndex) && exitIndex > entryIndex) {
                 const distance = exitIndex - entryIndex;
@@ -94,7 +96,6 @@ const processSingleScholarSheet = (rows: (string|number)[][], sheetName: string)
                 }
             }
         });
-
         if (bestExitIndex !== -1) {
             entryExitPairs.push({ entry: entryIndex, exit: bestExitIndex });
             usedExitIndices.add(bestExitIndex);
@@ -134,6 +135,7 @@ const processSingleScholarSheet = (rows: (string|number)[][], sheetName: string)
         }
         
         let dailyTotalHours = 0;
+        let dailyOutOfSederHours = 0;
         const rawTimeParts: string[] = [];
 
         for (const pair of entryExitPairs) {
@@ -144,8 +146,19 @@ const processSingleScholarSheet = (rows: (string|number)[][], sheetName: string)
                 const entryHours = timeStringToDecimalHours(entryTimeStr);
                 const exitHours = timeStringToDecimalHours(exitTimeStr);
 
-                if (exitHours > entryHours) { // Basic sanity check
-                    dailyTotalHours += (exitHours - entryHours);
+                if (exitHours > entryHours) {
+                    const originalDuration = exitHours - entryHours;
+                    let validDuration = 0;
+                    
+                    for (const seder of sedarim) {
+                        const intersectionStart = Math.max(entryHours, seder.start);
+                        const intersectionEnd = Math.min(exitHours, seder.end);
+                        if (intersectionEnd > intersectionStart) {
+                            validDuration += (intersectionEnd - intersectionStart);
+                        }
+                    }
+                    dailyTotalHours += validDuration;
+                    dailyOutOfSederHours += (originalDuration - validDuration);
                     rawTimeParts.push(`${entryTimeStr}-${exitTimeStr}`);
                 }
             }
@@ -155,7 +168,8 @@ const processSingleScholarSheet = (rows: (string|number)[][], sheetName: string)
             details.push({ 
                 day: dayAndDateStr, 
                 hours: dailyTotalHours, 
-                rawTime: dailyTotalHours > 0 ? rawTimeParts.join(' | ') : '-'
+                rawTime: dailyTotalHours + dailyOutOfSederHours > 0 ? rawTimeParts.join(' | ') : '-',
+                outOfSederHours: dailyOutOfSederHours > 0.01 ? dailyOutOfSederHours : undefined,
             });
         }
     }
@@ -184,6 +198,17 @@ export const parseXlsxAndCalculateStipends = (xlsxBuffer: ArrayBuffer, kollelDet
         throw new Error('קובץ ה-XLSX לא מכיל גיליונות.');
     }
 
+    const { settings } = kollelDetails;
+    const timeToDecimal = (timeStr: string): number => {
+        if (!/^\d{1,2}:\d{2}$/.test(timeStr)) return NaN;
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        return hours + minutes / 60;
+    };
+    const sedarim = [
+        { start: timeToDecimal(settings.sederA_start), end: timeToDecimal(settings.sederA_end) },
+        { start: timeToDecimal(settings.sederB_start), end: timeToDecimal(settings.sederB_end) }
+    ].filter(s => !isNaN(s.start) && !isNaN(s.end) && s.end > s.start);
+
     const allResults: StipendResult[] = [];
     let commonMonthYear: string | null = null;
 
@@ -193,32 +218,31 @@ export const parseXlsxAndCalculateStipends = (xlsxBuffer: ArrayBuffer, kollelDet
 
         const rows: (string|number)[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: '' });
 
-        // Skip empty or very small sheets that are unlikely to contain data
         if (rows.length < 10) continue;
 
         try {
-            const scholarData = processSingleScholarSheet(rows, sheetName);
+            const scholarData = processSingleScholarSheet(rows, sheetName, sedarim);
             
             if (!commonMonthYear && scholarData.monthYear) {
                 commonMonthYear = scholarData.monthYear;
             } else if (scholarData.monthYear && commonMonthYear !== scholarData.monthYear) {
-                // This is a warning, not a fatal error. We'll proceed but let the user know.
                 console.warn(`חודש לא תואם בגיליון "${sheetName}". מצופה ${commonMonthYear}, נמצא ${scholarData.monthYear}.`);
             }
             
-            const totalHours = scholarData.details.reduce((sum, d) => sum + d.hours, 0);
-
+            const totalValidHours = scholarData.details.reduce((sum, d) => sum + d.hours, 0);
+            const totalOutOfSederHours = scholarData.details.reduce((sum, d) => sum + (d.outOfSederHours || 0), 0);
             const activeDays = scholarData.details.filter(d => d.hours > 0).length;
-            const requiredHours = activeDays * kollelDetails.settings.dailyHoursTarget;
-            const hourDeficit = Math.max(0, requiredHours - totalHours);
-            const totalDeduction = hourDeficit * kollelDetails.settings.deductionPerHour;
-            const finalStipend = kollelDetails.settings.baseStipend - totalDeduction;
+            const requiredHours = activeDays * settings.dailyHoursTarget;
+            const hourDeficit = Math.max(0, requiredHours - totalValidHours);
+            const totalDeduction = hourDeficit * settings.deductionPerHour;
+            const finalStipend = settings.baseStipend - totalDeduction;
 
             allResults.push({
                 name: scholarData.name,
-                totalHours,
+                totalHours: totalValidHours,
                 stipend: Math.max(0, finalStipend),
                 details: scholarData.details,
+                totalOutOfSederHours,
             });
 
         } catch (e) {

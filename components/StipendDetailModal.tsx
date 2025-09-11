@@ -23,9 +23,9 @@ const StipendDetailModal: React.FC<StipendDetailModalProps> = ({ isOpen, onClose
   const requiredHours = activeDays * settings.dailyHoursTarget;
   const hourDeficit = Math.max(0, requiredHours - result.totalHours);
   const totalDeduction = hourDeficit * settings.deductionPerHour;
-  // For future use
   const totalBonus = 0; 
   const calculatedStipend = settings.baseStipend - totalDeduction + totalBonus;
+  const totalOutOfSederHours = result.totalOutOfSederHours || 0;
 
   const handleExportDetails = () => {
     if (result) {
@@ -39,6 +39,7 @@ const StipendDetailModal: React.FC<StipendDetailModalProps> = ({ isOpen, onClose
     { label: 'שעות תקן יומי', value: `${settings.dailyHoursTarget.toFixed(2)} שעות` },
     { label: 'סה"כ שעות נדרשות', value: `${requiredHours.toFixed(2)} שעות (${activeDays} ימים * ${settings.dailyHoursTarget} שעות)` },
     { label: 'סה"כ שעות לימוד', value: `${result.totalHours.toFixed(2)} שעות` },
+    ...(totalOutOfSederHours > 0.01 ? [{ label: 'שעות מחוץ לסדר (לא נכלל)', value: `${totalOutOfSederHours.toFixed(2)} שעות`, color: 'text-slate-500 dark:text-slate-400' }] : []),
     { label: 'שעות חסרות', value: `${hourDeficit.toFixed(2)} שעות` },
     { label: 'ניכוי לשעת חיסור', value: `₪${settings.deductionPerHour.toFixed(2)}` },
     { label: 'סה"כ ניכוי', value: `₪${totalDeduction.toFixed(2)}`, color: 'text-red-600 dark:text-red-400', sign: '-' },
@@ -117,6 +118,11 @@ const StipendDetailModal: React.FC<StipendDetailModalProps> = ({ isOpen, onClose
                     </div>
                     {detail.hours > 0 && (
                       <div className="text-xs text-slate-400">({detail.hours.toFixed(2)} שעות)</div>
+                    )}
+                    {detail.outOfSederHours && detail.outOfSederHours > 0.01 && (
+                      <div className="text-xs text-amber-600 dark:text-amber-500 mt-1" title="שעות מחוץ לסדרים">
+                          (+{detail.outOfSederHours.toFixed(2)} בחוץ)
+                      </div>
                     )}
                   </div>
                 ))}
