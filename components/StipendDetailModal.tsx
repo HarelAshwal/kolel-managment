@@ -111,7 +111,9 @@ const StipendDetailModal: React.FC<StipendDetailModalProps> = ({ isOpen, onClose
                   <div key={detailIndex} className="bg-slate-100 dark:bg-slate-700/50 p-3 rounded-lg text-center">
                     <div className="font-bold text-slate-700 dark:text-slate-300">{detail.day}</div>
                     <div className={`text-sm mt-1 font-medium ${detail.hours > 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>
-                      {detail.rawTime}
+                       {detail.rawTime && typeof detail.rawTime === 'string' ? detail.rawTime.split(' | ').map((part, i) => (
+                        <div key={i}>{part}</div>
+                      )) : detail.rawTime}
                     </div>
                     {detail.hours > 0 && (
                       <div className="text-xs text-slate-400">({detail.hours.toFixed(2)} שעות)</div>

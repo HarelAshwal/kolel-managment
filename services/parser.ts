@@ -1,16 +1,18 @@
 import type { StipendResult, DailyDetail, KollelDetails, ParseResult } from '../types';
 
 /**
- * Converts a time string like "HH:mm" to a decimal number of hours.
+ * Converts a time string like "HH:mm" or "*HH:mm" to a decimal number of hours.
  * Returns 0 if format is invalid.
  * @param timeStr The time string to convert.
  * @returns Total hours as a decimal.
  */
 const timeStringToDecimalHours = (timeStr: string): number => {
-    if (!timeStr || !/^\d{1,3}:\d{2}$/.test(timeStr.trim())) { // Allow more than 99 hours, e.g., 120:30
+    if (!timeStr) return 0;
+    const cleanedTimeStr = timeStr.trim().replace('*', ''); // Clean the '*'
+    if (!/^\d{1,3}:\d{2}$/.test(cleanedTimeStr)) {
         return 0;
     }
-    const [hours, minutes] = timeStr.trim().split(':').map(Number);
+    const [hours, minutes] = cleanedTimeStr.split(':').map(Number);
     if (isNaN(hours) || isNaN(minutes)) {
         return 0;
     }
@@ -19,6 +21,7 @@ const timeStringToDecimalHours = (timeStr: string): number => {
 
 /**
  * Processes a single sheet from the XLSX file, corresponding to one scholar.
+ * It now parses multiple entry/exit pairs per day.
  * @param rows An array of arrays representing the sheet.
  * @param sheetName The name of the sheet, which is the scholar's name.
  * @returns An object with the scholar's name, attendance details, and the month/year.
@@ -27,20 +30,12 @@ const processSingleScholarSheet = (rows: (string|number)[][], sheetName: string)
     const name = sheetName;
     let monthYear = '';
     const details: DailyDetail[] = [];
-
     const monthYearRegex = /(\d{2}\/\d{2,4})/;
-    let dataStartRow = -1;
-    let dayColIndex = -1;
-    let totalHoursColIndex = -1;
 
-    // 1. Find metadata (month), column indices, and the start of data
-    for (let i = 0; i < Math.min(rows.length, 15); i++) { // Scan first 15 rows
-        const row = rows[i];
-        if (!row) continue;
-
-        // Find month/year from any cell in the top rows
-        if (!monthYear) {
-            for (const cell of row) {
+    // 1. Find month/year from top rows
+    for (let i = 0; i < 5; i++) {
+        if (rows[i]) {
+            for (const cell of rows[i]) {
                 const match = String(cell).match(monthYearRegex);
                 if (match && match[1]) {
                     let capturedDate = match[1];
@@ -54,51 +49,114 @@ const processSingleScholarSheet = (rows: (string|number)[][], sheetName: string)
                 }
             }
         }
-        
-        // Find column indices
-        if (dayColIndex === -1) {
-            dayColIndex = row.findIndex(cell => String(cell).trim() === 'יום');
-        }
-        if (totalHoursColIndex === -1) {
-            totalHoursColIndex = row.findIndex(cell => String(cell).trim() === 'סה"כ');
-        }
-
-        // Find the start of the actual data by looking for a date pattern in the "day" column
-        if (dataStartRow === -1 && dayColIndex !== -1 && String(row[dayColIndex]).match(/\d{1,2}\/\d{1,2}/)) {
-            dataStartRow = i;
-        }
+        if (monthYear) break;
     }
-
     if (!monthYear) {
-         throw new Error(`לא ניתן היה למצוא את חודש ושנת הדוח עבור ${name}.`);
+        throw new Error(`לא ניתן היה למצוא את חודש ושנת הדוח עבור ${name}.`);
     }
-    if (dayColIndex === -1 || totalHoursColIndex === -1) {
-        throw new Error(`לא ניתן היה למצוא את העמודות "יום" ו"סה\\"כ" עבור ${name}.`);
+    
+    // 2. Find header row and column indices
+    let headerRowIndex = -1;
+    let dayColIndex = -1;
+    const entryExitPairs: { entry: number; exit: number }[] = [];
+
+    // Find the header row (contains 'יום' and 'כניסה')
+    for (let i = 0; i < 15; i++) {
+        const row = rows[i];
+        if (row && row.some(c => String(c).trim() === 'יום') && row.some(c => String(c).trim() === 'כניסה')) {
+            headerRowIndex = i;
+            break;
+        }
+    }
+
+    if (headerRowIndex === -1) {
+        throw new Error(`לא ניתן היה למצוא את שורת הכותרות עם "יום" ו"כניסה" עבור ${name}.`);
+    }
+
+    const headerRow = rows[headerRowIndex];
+    dayColIndex = headerRow.findIndex(cell => String(cell).trim() === 'יום');
+
+    // Robustly find and pair 'כניסה' and 'יציאה' columns
+    const entryIndices = headerRow.map((c, i) => String(c).trim() === 'כניסה' ? i : -1).filter(i => i !== -1);
+    const exitIndices = headerRow.map((c, i) => String(c).trim() === 'יציאה' ? i : -1).filter(i => i !== -1);
+    const usedExitIndices = new Set<number>();
+
+    entryIndices.forEach(entryIndex => {
+        let bestExitIndex = -1;
+        let minDistance = Infinity;
+
+        exitIndices.forEach(exitIndex => {
+            if (!usedExitIndices.has(exitIndex) && exitIndex > entryIndex) {
+                const distance = exitIndex - entryIndex;
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    bestExitIndex = exitIndex;
+                }
+            }
+        });
+
+        if (bestExitIndex !== -1) {
+            entryExitPairs.push({ entry: entryIndex, exit: bestExitIndex });
+            usedExitIndices.add(bestExitIndex);
+        }
+    });
+    entryExitPairs.sort((a, b) => a.entry - b.entry);
+
+    if (dayColIndex === -1 || entryExitPairs.length === 0) {
+        throw new Error(`לא ניתן היה למצוא את עמודת "יום" או זוגות "כניסה"/"יציאה" עבור ${name}.`);
+    }
+    
+    // 3. Find data start row
+    let dataStartRow = -1;
+    for (let i = headerRowIndex + 1; i < rows.length; i++) {
+        if (rows[i] && String(rows[i][dayColIndex]).match(/\d{1,2}\/\d{1,2}/)) {
+            dataStartRow = i;
+            break;
+        }
     }
     if (dataStartRow === -1) {
         throw new Error(`לא ניתן היה למצוא את שורת הנתונים הראשונה עבור ${name}.`);
     }
 
-    // 2. Extract daily attendance data from the table
+    // 4. Extract daily data
     for (let i = dataStartRow; i < rows.length; i++) {
         const row = rows[i];
-        
-        // Stop if we hit a separator or a summary row (where the "day" column might have 'סה"כ')
         if (!row || !row[dayColIndex] || String(row[dayColIndex]).trim().startsWith('--') || String(row[dayColIndex]).trim() === 'סה"כ') {
-            continue; 
+            continue;
+        }
+
+        const dayAndDateStr = String(row[dayColIndex] || '').trim();
+        const isDayOff = Object.values(row).some(cell => String(cell).trim() === 'חופש');
+
+        if (isDayOff) {
+            details.push({ day: dayAndDateStr, hours: 0, rawTime: 'חופש' });
+            continue;
         }
         
-        const dayAndDateStr = String(row[dayColIndex] || '').trim();
-        const totalTimeStr = String(row[totalHoursColIndex] || '').trim();
+        let dailyTotalHours = 0;
+        const rawTimeParts: string[] = [];
+
+        for (const pair of entryExitPairs) {
+            const entryTimeStr = String(row[pair.entry] || '').trim();
+            const exitTimeStr = String(row[pair.exit] || '').trim();
+
+            if (entryTimeStr && exitTimeStr && entryTimeStr !== '-' && exitTimeStr !== '') {
+                const entryHours = timeStringToDecimalHours(entryTimeStr);
+                const exitHours = timeStringToDecimalHours(exitTimeStr);
+
+                if (exitHours > entryHours) { // Basic sanity check
+                    dailyTotalHours += (exitHours - entryHours);
+                    rawTimeParts.push(`${entryTimeStr}-${exitTimeStr}`);
+                }
+            }
+        }
         
-        const isDayOff = Object.values(row).some(cell => String(cell).trim() === 'חופש');
-        const rawTime = isDayOff ? "חופש" : totalTimeStr;
-        
-        if (dayAndDateStr && totalTimeStr && totalTimeStr !== '-' && totalTimeStr !== '') {
-             const hours = timeStringToDecimalHours(totalTimeStr);
-             details.push({ day: dayAndDateStr, hours, rawTime: totalTimeStr });
-        } else if (dayAndDateStr) { // Handle days off or zero-hour days
-             details.push({ day: dayAndDateStr, hours: 0, rawTime: rawTime || '-' });
+        if (dayAndDateStr) {
+            details.push({ 
+                day: dayAndDateStr, 
+                hours: dailyTotalHours, 
+                rawTime: dailyTotalHours > 0 ? rawTimeParts.join(' | ') : '-'
+            });
         }
     }
     

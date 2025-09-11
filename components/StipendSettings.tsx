@@ -14,14 +14,36 @@ const StipendSettings: React.FC<StipendSettingsProps> = ({ initialSettings, onSa
 
   const handleSettingsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
-    setSettings(prev => ({
-      ...prev,
-      [name]: type === 'number' ? parseFloat(value) || 0 : value,
-    }));
+    
+    if (['sederA_start', 'sederA_end', 'sederB_start', 'sederB_end'].includes(name)) {
+        // Filter input to allow only digits and colons for time fields
+        const filteredValue = value.replace(/[^0-9:]/g, '');
+        setSettings(prev => ({
+            ...prev,
+            [name]: filteredValue,
+        }));
+    } else {
+        setSettings(prev => ({
+            ...prev,
+            [name]: type === 'number' ? parseFloat(value) || 0 : value,
+        }));
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    if (
+        !timeRegex.test(settings.sederA_start) ||
+        !timeRegex.test(settings.sederA_end) ||
+        !timeRegex.test(settings.sederB_start) ||
+        !timeRegex.test(settings.sederB_end)
+    ) {
+        setError('פורמט הזמן אינו תקין. יש להזין בפורמט HH:mm (לדוגמה: 13:00).');
+        return;
+    }
+
     if (settings.baseStipend <= 0 || settings.dailyHoursTarget <= 0 || settings.deductionPerHour < 0) {
       setError('יש למלא את כל שדות החובה. הערכים המספריים חייבים להיות חיוביים.');
       return;
@@ -63,19 +85,19 @@ const StipendSettings: React.FC<StipendSettingsProps> = ({ initialSettings, onSa
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
              <div>
               <label htmlFor="sederA_start" className="block text-sm">סדר א' - התחלה</label>
-              <input type="time" id="sederA_start" name="sederA_start" value={settings.sederA_start} onChange={handleSettingsChange} className="mt-1 w-full block p-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700" />
+              <input type="text" id="sederA_start" name="sederA_start" value={settings.sederA_start} onChange={handleSettingsChange} className="mt-1 w-full block p-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700" pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" placeholder="HH:mm" maxLength={5} title="יש להזין זמן בפורמט HH:mm" />
             </div>
             <div>
               <label htmlFor="sederA_end" className="block text-sm">סדר א' - סיום</label>
-              <input type="time" id="sederA_end" name="sederA_end" value={settings.sederA_end} onChange={handleSettingsChange} className="mt-1 w-full block p-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700" />
+              <input type="text" id="sederA_end" name="sederA_end" value={settings.sederA_end} onChange={handleSettingsChange} className="mt-1 w-full block p-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700" pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" placeholder="HH:mm" maxLength={5} title="יש להזין זמן בפורמט HH:mm" />
             </div>
              <div>
               <label htmlFor="sederB_start" className="block text-sm">סדר ב' - התחלה</label>
-              <input type="time" id="sederB_start" name="sederB_start" value={settings.sederB_start} onChange={handleSettingsChange} className="mt-1 w-full block p-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700" />
+              <input type="text" id="sederB_start" name="sederB_start" value={settings.sederB_start} onChange={handleSettingsChange} className="mt-1 w-full block p-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700" pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" placeholder="HH:mm" maxLength={5} title="יש להזין זמן בפורמט HH:mm" />
             </div>
             <div>
               <label htmlFor="sederB_end" className="block text-sm">סדר ב' - סיום</label>
-              <input type="time" id="sederB_end" name="sederB_end" value={settings.sederB_end} onChange={handleSettingsChange} className="mt-1 w-full block p-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700" />
+              <input type="text" id="sederB_end" name="sederB_end" value={settings.sederB_end} onChange={handleSettingsChange} className="mt-1 w-full block p-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700" pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" placeholder="HH:mm" maxLength={5} title="יש להזין זמן בפורמט HH:mm" />
             </div>
           </div>
         </fieldset>
