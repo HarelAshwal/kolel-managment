@@ -71,10 +71,11 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onLogout, onSwitch
     setFileName(file.name);
     setIsLoading(true);
 
-    const isXlsx = file.name.toLowerCase().endsWith('.xlsx');
+    const fileNameLower = file.name.toLowerCase();
+    const isSupported = fileNameLower.endsWith('.xlsx') || fileNameLower.endsWith('.xls');
 
-    if (!isXlsx) {
-      setError('יש להעלות קובץ מסוג XLSX בלבד.');
+    if (!isSupported) {
+      setError('יש להעלות קובץ מסוג XLSX או XLS בלבד.');
       setFileName('');
       setIsLoading(false);
       return;
@@ -169,7 +170,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onLogout, onSwitch
         <button onClick={handleUploadClick} disabled={isLoading} className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 transform hover:scale-105">
             <UploadIcon className="w-12 h-12 text-indigo-500 mb-3" />
             <span className="font-semibold text-slate-800 dark:text-slate-200">העלאת דוח</span>
-            <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">קובץ XLSX בלבד</span>
+            <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">קובץ XLSX/XLS</span>
         </button>
         <button onClick={() => setView('VIEW_SAVED')} disabled={savedData.length === 0} className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
             <HistoryIcon className="w-12 h-12 text-teal-500 mb-3" />
@@ -191,7 +192,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onLogout, onSwitch
             type="file"
             ref={fileInputRef}
             onChange={handleFileChange}
-            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xls,application/vnd.ms-excel"
             className="hidden"
             disabled={isLoading}
         />
