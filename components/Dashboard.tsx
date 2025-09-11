@@ -261,7 +261,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onLogout, onSwitch
                 </button>
             </div>
         </div>
-        {stipendResults && <AttendanceTable results={stipendResults} />}
+        {stipendResults && monthYear && <AttendanceTable results={stipendResults} kollelDetails={kollelDetails} monthYear={monthYear} />}
     </div>
   );
 
