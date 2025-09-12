@@ -4,6 +4,7 @@ import Login from './components/Login';
 import KollelSetup from './components/KollelSetup';
 import Dashboard from './components/Dashboard';
 import KollelSelection from './components/KollelSelection';
+import { getKollels, addKollel, updateKollel, deleteKollel } from './services/api';
 
 type AppState = 'LOGIN' | 'SELECT_KOLLEL' | 'SETUP_KOLLEL' | 'DASHBOARD';
 
@@ -21,21 +22,28 @@ const defaultSettings: StipendSettings = {
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('LOGIN');
-  const [kollels, setKollels] = useState<KollelDetails[]>(() => {
-    try {
-      const savedKollels = localStorage.getItem('kollelsList');
-      return savedKollels ? JSON.parse(savedKollels) : [];
-    } catch (error) {
-      console.error("Failed to parse kollels list from localStorage", error);
-      return [];
-    }
-  });
+  const [kollels, setKollels] = useState<KollelDetails[]>([]);
   const [selectedKollel, setSelectedKollel] = useState<KollelDetails | null>(null);
   const [editingKollel, setEditingKollel] = useState<KollelDetails | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('kollelsList', JSON.stringify(kollels));
-  }, [kollels]);
+    const loadKollels = async () => {
+      try {
+        setError(null);
+        setIsLoading(true);
+        const data = await getKollels();
+        setKollels(data);
+      } catch (err) {
+        console.error("Failed to load kollels", err);
+        setError("שגיאה בטעינת הנתונים. נסה לרענן את הדף.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadKollels();
+  }, []);
 
   const handleLogin = () => {
     if (kollels.length > 0) {
@@ -59,9 +67,15 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDeleteKollel = (kollelId: string) => {
+  const handleDeleteKollel = async (kollelId: string) => {
     if (window.confirm('האם אתה בטוח שברצונך למחוק את הכולל? לא ניתן לשחזר פעולה זו.')) {
-        setKollels(kollels.filter(k => k.id !== kollelId));
+      try {
+          await deleteKollel(kollelId);
+          setKollels(prev => prev.filter(k => k.id !== kollelId));
+      } catch (err) {
+          console.error("Failed to delete kollel", err);
+          alert("שגיאה במחיקת הכולל.");
+      }
     }
   };
 
@@ -78,41 +92,53 @@ const App: React.FC = () => {
     }
   };
   
-  const handleSetupComplete = (kollelData: { name: string; managerName?: string; phone?: string; address?: string; }) => {
-    if (editingKollel) { // We are in edit mode
-      const updatedKollels = kollels.map(k => 
-        k.id === editingKollel.id ? { ...k, ...kollelData } : k
-      );
-      setKollels(updatedKollels);
-      // If the edited kollel is the selected one, update it
-      if (selectedKollel && selectedKollel.id === editingKollel.id) {
-          setSelectedKollel(prev => prev ? { ...prev, ...kollelData } : null);
+  const handleSetupComplete = async (kollelData: { name: string; managerName?: string; phone?: string; address?: string; }) => {
+    try {
+      if (editingKollel) { // We are in edit mode
+        const kollelToUpdate = { ...editingKollel, ...kollelData };
+        const updatedKollel = await updateKollel(kollelToUpdate);
+        
+        setKollels(prev => prev.map(k => 
+          k.id === editingKollel.id ? updatedKollel : k
+        ));
+        
+        // If the edited kollel is the selected one, update it
+        if (selectedKollel && selectedKollel.id === editingKollel.id) {
+            setSelectedKollel(updatedKollel);
+        }
+        setAppState('SELECT_KOLLEL');
+      } else { // We are in add new mode
+        const newKollelData = {
+            ...kollelData,
+            settings: defaultSettings,
+        };
+        const newKollel = await addKollel(newKollelData);
+        setKollels(prev => [...prev, newKollel]);
+        setSelectedKollel(newKollel);
+        setAppState('DASHBOARD');
       }
-      setAppState('SELECT_KOLLEL');
-    } else { // We are in add new mode
-      const newKollel: KollelDetails = {
-          id: Date.now().toString(),
-          ...kollelData,
-          settings: defaultSettings,
-      };
-      setKollels([...kollels, newKollel]);
-      setSelectedKollel(newKollel);
-      setAppState('DASHBOARD');
+      setEditingKollel(null);
+    } catch (err) {
+      console.error("Failed to save kollel", err);
+      alert("שגיאה בשמירת פרטי הכולל.");
     }
-    setEditingKollel(null);
   };
 
-  const handleUpdateKollelSettings = (newSettings: StipendSettings) => {
+  const handleUpdateKollelSettings = async (newSettings: StipendSettings) => {
     if (!selectedKollel) return;
 
-    const updatedKollel = { ...selectedKollel, settings: newSettings };
+    try {
+      const updatedKollelData = { ...selectedKollel, settings: newSettings };
+      const updatedKollel = await updateKollel(updatedKollelData);
 
-    const updatedKollels = kollels.map(k => 
-      k.id === selectedKollel.id ? updatedKollel : k
-    );
-
-    setKollels(updatedKollels);
-    setSelectedKollel(updatedKollel);
+      setKollels(prev => prev.map(k => 
+        k.id === selectedKollel.id ? updatedKollel : k
+      ));
+      setSelectedKollel(updatedKollel);
+    } catch (err) {
+      console.error("Failed to update settings", err);
+      alert("שגיאה בעדכון הגדרות המלגה.");
+    }
   };
   
   const handleCancelSetup = () => {
@@ -131,6 +157,13 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
+    if (isLoading) {
+        return <div className="text-center text-lg animate-pulse">טוען נתונים...</div>;
+    }
+    if (error) {
+        return <div className="text-center text-red-500 bg-red-100 dark:bg-red-900/30 p-4 rounded-lg">{error}</div>;
+    }
+
     switch (appState) {
       case 'LOGIN':
         return <Login onLogin={handleLogin} />;

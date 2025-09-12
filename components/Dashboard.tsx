@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { KollelDetails, StipendResult, MonthlyData, StipendSettings } from '../types';
 import { parseXlsxAndCalculateStipends } from '../services/parser';
 import { exportSummaryToCsv } from '../services/exporter';
+import { getSavedData, saveMonthlyData, deleteMonthlyData } from '../services/api';
 import AttendanceTable from './AttendanceTable';
 import Reports from './Reports';
 // Fix: Renamed component import to avoid name collision with the StipendSettings type.
@@ -36,30 +37,33 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onLogout, onSwitch
   const [error, setError] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isDataLoading, setIsDataLoading] = useState<boolean>(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    try {
-      const data = localStorage.getItem(`savedData_${kollelDetails.id}`);
-      setSavedData(data ? JSON.parse(data) : []);
-    } catch (e) {
-      console.error("Failed to load or parse saved data", e);
-      setSavedData([]);
-    }
+    const loadSavedData = async () => {
+      if (!kollelDetails.id) return;
+      setIsDataLoading(true);
+      try {
+        const data = await getSavedData(kollelDetails.id);
+        setSavedData(data);
+      } catch (e) {
+        console.error("Failed to load saved data", e);
+        setError("שגיאה בטעינת נתונים שמורים.");
+        setSavedData([]);
+      } finally {
+        setIsDataLoading(false);
+      }
+    };
+
+    loadSavedData();
+    // Reset view state when kollel changes
     setView('CHOICE');
     setStipendResults(null);
     setMonthYear(null);
     setError('');
     setFileName('');
   }, [kollelDetails.id]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(`savedData_${kollelDetails.id}`, JSON.stringify(savedData));
-    } catch (e) {
-      console.error("Failed to save data to localStorage", e);
-    }
-  }, [savedData, kollelDetails.id]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -131,12 +135,18 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onLogout, onSwitch
     }
   };
 
-  const handleSaveCurrentMonth = () => {
+  const handleSaveCurrentMonth = async () => {
     if (!monthYear || !stipendResults) return;
     if (savedData.some(d => d.monthYear === monthYear)) return;
 
     const newData: MonthlyData = { monthYear, results: stipendResults };
-    setSavedData(prev => [...prev, newData].sort((a,b) => b.monthYear.localeCompare(a.monthYear)));
+    try {
+        await saveMonthlyData(kollelDetails.id, newData);
+        setSavedData(prev => [...prev, newData].sort((a,b) => b.monthYear.localeCompare(a.monthYear)));
+    } catch (err) {
+        console.error("Failed to save monthly data", err);
+        alert("שגיאה בשמירת נתוני החודש.");
+    }
   };
 
   const handleLoadMonth = (monthData: MonthlyData) => {
@@ -147,9 +157,15 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onLogout, onSwitch
     setView('SHOW_RESULTS');
   };
 
-  const handleDeleteMonth = (monthYearToDelete: string) => {
+  const handleDeleteMonth = async (monthYearToDelete: string) => {
     if (window.confirm(`האם אתה בטוח שברצונך למחוק את הנתונים עבור חודש ${monthYearToDelete}? לא ניתן לשחזר פעולה זו.`)) {
-        setSavedData(prev => prev.filter(d => d.monthYear !== monthYearToDelete));
+        try {
+            await deleteMonthlyData(kollelDetails.id, monthYearToDelete);
+            setSavedData(prev => prev.filter(d => d.monthYear !== monthYearToDelete));
+        } catch (err) {
+            console.error("Failed to delete monthly data", err);
+            alert("שגיאה במחיקת נתוני החודש.");
+        }
     }
   };
 
@@ -163,49 +179,53 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onLogout, onSwitch
 
   const isCurrentMonthSaved = monthYear ? savedData.some(d => d.monthYear === monthYear) : false;
 
-  const renderChoiceView = () => (
-    <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-8 text-center">
-      <h2 className="text-2xl font-semibold mb-6">אפשרויות ניהול</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <button onClick={handleUploadClick} disabled={isLoading} className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 transform hover:scale-105">
-            <UploadIcon className="w-12 h-12 text-indigo-500 mb-3" />
-            <span className="font-semibold text-slate-800 dark:text-slate-200">העלאת דוח</span>
-            <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">קובץ XLSX/XLS</span>
-        </button>
-        <button onClick={() => setView('VIEW_SAVED')} disabled={savedData.length === 0} className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
-            <HistoryIcon className="w-12 h-12 text-teal-500 mb-3" />
-            <span className="font-semibold text-slate-800 dark:text-slate-200">נתונים שמורים</span>
-            <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">{savedData.length} חודשים</span>
-        </button>
-        <button onClick={() => setView('REPORTS')} disabled={savedData.length === 0} className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
-            <ChartIcon className="w-12 h-12 text-amber-500 mb-3" />
-            <span className="font-semibold text-slate-800 dark:text-slate-200">הפקת דוחות</span>
-            <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">ניתוח נתונים</span>
-        </button>
-        <button onClick={() => setView('STIPEND_SETTINGS')} className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 transform hover:scale-105">
-            <CoinsIcon className="w-12 h-12 text-lime-500 mb-3" />
-            <span className="font-semibold text-slate-800 dark:text-slate-200">הגדרות מלגה</span>
-            <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">סכומים ובונוסים</span>
-        </button>
+  const renderChoiceView = () => {
+    if (isDataLoading) {
+      return <div className="text-center text-lg animate-pulse p-8">טוען נתונים שמורים...</div>;
+    }
+    return (
+      <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-8 text-center">
+        <h2 className="text-2xl font-semibold mb-6">אפשרויות ניהול</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <button onClick={handleUploadClick} disabled={isLoading} className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 transform hover:scale-105">
+              <UploadIcon className="w-12 h-12 text-indigo-500 mb-3" />
+              <span className="font-semibold text-slate-800 dark:text-slate-200">העלאת דוח</span>
+              <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">קובץ XLSX/XLS</span>
+          </button>
+          <button onClick={() => setView('VIEW_SAVED')} disabled={savedData.length === 0} className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+              <HistoryIcon className="w-12 h-12 text-teal-500 mb-3" />
+              <span className="font-semibold text-slate-800 dark:text-slate-200">נתונים שמורים</span>
+              <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">{savedData.length} חודשים</span>
+          </button>
+          <button onClick={() => setView('REPORTS')} disabled={savedData.length === 0} className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+              <ChartIcon className="w-12 h-12 text-amber-500 mb-3" />
+              <span className="font-semibold text-slate-800 dark:text-slate-200">הפקת דוחות</span>
+              <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">ניתוח נתונים</span>
+          </button>
+          <button onClick={() => setView('STIPEND_SETTINGS')} className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 transform hover:scale-105">
+              <CoinsIcon className="w-12 h-12 text-lime-500 mb-3" />
+              <span className="font-semibold text-slate-800 dark:text-slate-200">הגדרות מלגה</span>
+              <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">סכומים ובונוסים</span>
+          </button>
+        </div>
+        <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xls,application/vnd.ms-excel"
+              className="hidden"
+              disabled={isLoading}
+          />
+          {isLoading && <p className="mt-6 text-sm text-indigo-600 dark:text-indigo-400 animate-pulse">מעבד את <span className="font-medium">{fileName}</span>...</p>}
+          {error && (
+              <div className="mt-6 bg-red-100 dark:bg-red-900/30 border-r-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg text-right" role="alert">
+                  <p className="font-bold">שגיאה</p>
+                  <p>{error}</p>
+              </div>
+          )}
       </div>
-       <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xls,application/vnd.ms-excel"
-            className="hidden"
-            disabled={isLoading}
-        />
-        {isLoading && <p className="mt-6 text-sm text-indigo-600 dark:text-indigo-400 animate-pulse">מעבד את <span className="font-medium">{fileName}</span>...</p>}
-        {error && (
-            <div className="mt-6 bg-red-100 dark:bg-red-900/30 border-r-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg text-right" role="alert">
-                <p className="font-bold">שגיאה</p>
-                <p>{error}</p>
-            </div>
-        )}
-    </div>
-  );
-
+    );
+  };
   const renderSavedView = () => (
     <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-8 w-full max-w-2xl">
         <div className="flex justify-between items-center mb-6">
