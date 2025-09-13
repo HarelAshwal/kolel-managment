@@ -1,4 +1,5 @@
 import type { KollelDetails, MonthlyData, StipendSettings } from '../types';
+import { config } from '../config';
 
 /**
  * Checks if the app is running in an environment that should use localStorage.
@@ -15,7 +16,7 @@ const isStudioEnv = (): boolean => {
   }
 };
 
-const API_BASE_URL = '/api'; // Placeholder for the actual server API base URL
+const API_BASE_URL = config.apiBaseUrl;
 
 // --- LocalStorage specific helpers ---
 
@@ -52,17 +53,16 @@ export const getKollels = async (): Promise<KollelDetails[]> => {
       return [];
     }
   } else {
-    // SERVER-SIDE PLACEHOLDER
+    // SERVER-SIDE IMPLEMENTATION
     console.log('API: Fetching kollels from server...');
-    // Example:
-    // const response = await fetch(`${API_BASE_URL}/kollels`);
-    // if (!response.ok) throw new Error('Failed to fetch kollels');
-    // return response.json();
-    console.warn('Server integration for getKollels is a placeholder. Using localStorage as fallback.');
     try {
-      const savedKollels = localStorage.getItem('kollelsList');
-      return savedKollels ? JSON.parse(savedKollels) : [];
-    } catch (error) { return []; }
+      const response = await fetch(`${API_BASE_URL}/kollels`);
+      if (!response.ok) throw new Error('Failed to fetch kollels');
+      return response.json();
+    } catch (error) {
+      console.error('Failed to fetch kollels from server:', error);
+      throw error;
+    }
   }
 };
 
@@ -82,21 +82,20 @@ export const addKollel = async (kollelData: { name: string; managerName?: string
         saveAllKollels_LS(updatedKollels);
         return newKollel;
     } else {
-        // SERVER-SIDE PLACEHOLDER
+        // SERVER-SIDE IMPLEMENTATION
         console.log('API: Adding kollel on server...');
-        // Example:
-        // const response = await fetch(`${API_BASE_URL}/kollels`, {
-        //     method: 'POST',
-        //     headers: { 'Content-Type': 'application/json' },
-        //     body: JSON.stringify(kollelData),
-        // });
-        // if (!response.ok) throw new Error('Failed to add kollel');
-        // return response.json(); // The server would return the created object with an ID
-        console.warn('Server integration for addKollel is a placeholder. Using localStorage as fallback.');
-        const kollels = await getKollels();
-        const updatedKollels = [...kollels, newKollel];
-        saveAllKollels_LS(updatedKollels);
-        return newKollel; // Optimistically return the new object
+        try {
+            const response = await fetch(`${API_BASE_URL}/kollels`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(kollelData),
+            });
+            if (!response.ok) throw new Error('Failed to add kollel');
+            return response.json();
+        } catch (error) {
+            console.error('Failed to add kollel on server:', error);
+            throw error;
+        }
     }
 };
 
@@ -111,21 +110,20 @@ export const updateKollel = async (updatedKollel: KollelDetails): Promise<Kollel
         saveAllKollels_LS(updatedKollels);
         return updatedKollel;
     } else {
-        // SERVER-SIDE PLACEHOLDER
+        // SERVER-SIDE IMPLEMENTATION
         console.log(`API: Updating kollel ${updatedKollel.id} on server...`);
-        // Example:
-        // const response = await fetch(`${API_BASE_URL}/kollels/${updatedKollel.id}`, {
-        //     method: 'PUT',
-        //     headers: { 'Content-Type': 'application/json' },
-        //     body: JSON.stringify(updatedKollel),
-        // });
-        // if (!response.ok) throw new Error('Failed to update kollel');
-        // return response.json();
-        console.warn('Server integration for updateKollel is a placeholder. Using localStorage as fallback.');
-        const kollels = await getKollels();
-        const updatedKollels = kollels.map(k => k.id === updatedKollel.id ? updatedKollel : k);
-        saveAllKollels_LS(updatedKollels);
-        return updatedKollel; // Optimistically return the updated object
+        try {
+            const response = await fetch(`${API_BASE_URL}/kollels/${updatedKollel.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updatedKollel),
+            });
+            if (!response.ok) throw new Error('Failed to update kollel');
+            return response.json();
+        } catch (error) {
+            console.error('Failed to update kollel on server:', error);
+            throw error;
+        }
     }
 };
 
@@ -139,17 +137,17 @@ export const deleteKollel = async (kollelId: string): Promise<void> => {
         const updatedKollels = kollels.filter(k => k.id !== kollelId);
         saveAllKollels_LS(updatedKollels);
     } else {
-        // SERVER-SIDE PLACEHOLDER
+        // SERVER-SIDE IMPLEMENTATION
         console.log(`API: Deleting kollel ${kollelId} on server...`);
-        // Example:
-        // const response = await fetch(`${API_BASE_URL}/kollels/${kollelId}`, {
-        //     method: 'DELETE',
-        // });
-        // if (!response.ok) throw new Error('Failed to delete kollel');
-        console.warn('Server integration for deleteKollel is a placeholder. Using localStorage as fallback.');
-        const kollels = await getKollels();
-        const updatedKollels = kollels.filter(k => k.id !== kollelId);
-        saveAllKollels_LS(updatedKollels);
+        try {
+            const response = await fetch(`${API_BASE_URL}/kollels/${kollelId}`, {
+                method: 'DELETE',
+            });
+            if (!response.ok) throw new Error('Failed to delete kollel');
+        } catch (error) {
+            console.error('Failed to delete kollel on server:', error);
+            throw error;
+        }
     }
 };
 
@@ -170,17 +168,16 @@ export const getSavedData = async (kollelId: string): Promise<MonthlyData[]> => 
             return [];
         }
     } else {
-        // SERVER-SIDE PLACEHOLDER
+        // SERVER-SIDE IMPLEMENTATION
         console.log(`API: Fetching saved data for kollel ${kollelId} from server...`);
-        // Example:
-        // const response = await fetch(`${API_BASE_URL}/kollels/${kollelId}/data`);
-        // if (!response.ok) throw new Error('Failed to fetch saved data');
-        // return response.json();
-        console.warn('Server integration for getSavedData is a placeholder. Using localStorage as fallback.');
-         try {
-            const data = localStorage.getItem(`savedData_${kollelId}`);
-            return data ? JSON.parse(data) : [];
-        } catch (e) { return []; }
+        try {
+            const response = await fetch(`${API_BASE_URL}/kollels/${kollelId}/data`);
+            if (!response.ok) throw new Error('Failed to fetch saved data');
+            return response.json();
+        } catch (error) {
+            console.error('Failed to fetch saved data from server:', error);
+            throw error;
+        }
     }
 };
 
@@ -195,20 +192,19 @@ export const saveMonthlyData = async (kollelId: string, newData: MonthlyData): P
         const updatedData = [...filteredData, newData].sort((a,b) => b.monthYear.localeCompare(a.monthYear));
         saveAllData_LS(kollelId, updatedData);
     } else {
-        // SERVER-SIDE PLACEHOLDER
+        // SERVER-SIDE IMPLEMENTATION
         console.log(`API: Saving monthly data for kollel ${kollelId} on server...`);
-        // Example:
-        // const response = await fetch(`${API_BASE_URL}/kollels/${kollelId}/data`, {
-        //     method: 'POST',
-        //     headers: { 'Content-Type': 'application/json' },
-        //     body: JSON.stringify(newData),
-        // });
-        // if (!response.ok) throw new Error('Failed to save monthly data');
-        console.warn('Server integration for saveMonthlyData is a placeholder. Using localStorage as fallback.');
-        const allData = await getSavedData(kollelId);
-        const filteredData = allData.filter(d => d.monthYear !== newData.monthYear);
-        const updatedData = [...filteredData, newData].sort((a,b) => b.monthYear.localeCompare(a.monthYear));
-        saveAllData_LS(kollelId, updatedData);
+        try {
+            const response = await fetch(`${API_BASE_URL}/kollels/${kollelId}/data`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newData),
+            });
+            if (!response.ok) throw new Error('Failed to save monthly data');
+        } catch (error) {
+            console.error('Failed to save monthly data on server:', error);
+            throw error;
+        }
     }
 };
 
@@ -222,17 +218,17 @@ export const deleteMonthlyData = async (kollelId: string, monthYearToDelete: str
         const updatedData = allData.filter(d => d.monthYear !== monthYearToDelete);
         saveAllData_LS(kollelId, updatedData);
     } else {
-        // SERVER-SIDE PLACEHOLDER
+        // SERVER-SIDE IMPLEMENTATION
         console.log(`API: Deleting monthly data for kollel ${kollelId} on server...`);
-        // Example:
-        // const monthYearParam = monthYearToDelete.replace('/', '-');
-        // const response = await fetch(`${API_BASE_URL}/kollels/${kollelId}/data/${monthYearParam}`, {
-        //     method: 'DELETE',
-        // });
-        // if (!response.ok) throw new Error('Failed to delete monthly data');
-        console.warn('Server integration for deleteMonthlyData is a placeholder. Using localStorage as fallback.');
-        const allData = await getSavedData(kollelId);
-        const updatedData = allData.filter(d => d.monthYear !== monthYearToDelete);
-        saveAllData_LS(kollelId, updatedData);
+        try {
+            const monthYearParam = monthYearToDelete.replace('/', '-');
+            const response = await fetch(`${API_BASE_URL}/kollels/${kollelId}/data/${monthYearParam}`, {
+                method: 'DELETE',
+            });
+            if (!response.ok) throw new Error('Failed to delete monthly data');
+        } catch (error) {
+            console.error('Failed to delete monthly data on server:', error);
+            throw error;
+        }
     }
 };
