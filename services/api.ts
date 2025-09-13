@@ -1,5 +1,4 @@
 import type { KollelDetails, MonthlyData, StipendSettings } from '../types';
-import { config } from '../config';
 
 /**
  * Checks if the app is running in an environment that should use localStorage.
@@ -7,16 +6,28 @@ import { config } from '../config';
  * @returns {boolean} True if it's likely an iframe environment, false otherwise.
  */
 const isStudioEnv = (): boolean => {
-  try {
-    // If inside an iframe, window.top will be different or inaccessible.
-    return window.self !== window.top;
-  } catch (e) {
-    // Accessing window.top can throw a cross-origin error, which means it's in an iframe.
-    return true;
-  }
+    // For development, always use the server unless explicitly in an iframe
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        try {
+            // Only use localStorage if we're actually in an iframe (AI Studio)
+            return window.self !== window.top;
+        } catch (e) {
+            // Accessing window.top can throw a cross-origin error, which means it's in an iframe.
+            return true;
+        }
+    }
+
+    // For production deployments, also check iframe status
+    try {
+        return window.self !== window.top;
+    } catch (e) {
+        return true;
+    }
 };
 
-const API_BASE_URL = config.apiBaseUrl;
+// Use relative URL - Vite proxy will route /api/* to backend server
+const API_BASE_URL = '/api';
+console.log('🔧 API Service - Using proxy-based API_BASE_URL:', API_BASE_URL);
 
 // --- LocalStorage specific helpers ---
 
@@ -43,27 +54,44 @@ const saveAllData_LS = (kollelId: string, allData: MonthlyData[]): void => {
  * Uses localStorage in Studio Env, otherwise it's a server placeholder.
  */
 export const getKollels = async (): Promise<KollelDetails[]> => {
-  if (isStudioEnv()) {
-    console.log('API: Using localStorage for getKollels');
-    try {
-      const savedKollels = localStorage.getItem('kollelsList');
-      return savedKollels ? JSON.parse(savedKollels) : [];
-    } catch (error) {
-      console.error("Failed to parse kollels list from localStorage", error);
-      return [];
+    const studioEnv = isStudioEnv();
+    console.log('🔍 getKollels Debug Info:', {
+        isStudioEnv: studioEnv,
+        apiBaseUrl: API_BASE_URL,
+        hostname: window.location.hostname,
+        href: window.location.href
+    });
+
+    if (studioEnv) {
+        console.log('API: Using localStorage for getKollels');
+        try {
+            const savedKollels = localStorage.getItem('kollelsList');
+            return savedKollels ? JSON.parse(savedKollels) : [];
+        } catch (error) {
+            console.error("Failed to parse kollels list from localStorage", error);
+            return [];
+        }
+    } else {
+        // SERVER-SIDE IMPLEMENTATION
+        console.log('API: Fetching kollels from server...');
+        console.log('🌐 Making request to:', `${API_BASE_URL}/kollels`);
+        try {
+            const response = await fetch(`${API_BASE_URL}/kollels`);
+            console.log('📡 Response status:', response.status);
+            console.log('📡 Response headers:', response.headers);
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Response error text:', errorText);
+                throw new Error(`Failed to fetch kollels: ${response.status} ${response.statusText}`);
+            }
+            const data = await response.json();
+            console.log('✅ Successful response data:', data);
+            return data;
+        } catch (error) {
+            console.error('Failed to fetch kollels from server:', error);
+            throw error;
+        }
     }
-  } else {
-    // SERVER-SIDE IMPLEMENTATION
-    console.log('API: Fetching kollels from server...');
-    try {
-      const response = await fetch(`${API_BASE_URL}/kollels`);
-      if (!response.ok) throw new Error('Failed to fetch kollels');
-      return response.json();
-    } catch (error) {
-      console.error('Failed to fetch kollels from server:', error);
-      throw error;
-    }
-  }
 };
 
 /**
@@ -189,7 +217,7 @@ export const saveMonthlyData = async (kollelId: string, newData: MonthlyData): P
         console.log(`API: Using localStorage for saveMonthlyData for kollel ${kollelId}`);
         const allData = await getSavedData(kollelId);
         const filteredData = allData.filter(d => d.monthYear !== newData.monthYear);
-        const updatedData = [...filteredData, newData].sort((a,b) => b.monthYear.localeCompare(a.monthYear));
+        const updatedData = [...filteredData, newData].sort((a, b) => b.monthYear.localeCompare(a.monthYear));
         saveAllData_LS(kollelId, updatedData);
     } else {
         // SERVER-SIDE IMPLEMENTATION

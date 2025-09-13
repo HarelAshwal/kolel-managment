@@ -10,7 +10,10 @@
   },
   "dependencies": {
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "path": "^0.12.7",
+    "url": "^0.11.4",
+    "vite": "^7.1.5"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
