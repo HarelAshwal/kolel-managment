@@ -4,6 +4,7 @@ import Login from './components/Login';
 import KollelSetup from './components/KollelSetup';
 import Dashboard from './components/Dashboard';
 import KollelSelection from './components/KollelSelection';
+import VersionDisplay from './components/VersionDisplay';
 import { getKollels, addKollel, updateKollel, deleteKollel } from './services/api';
 
 type AppState = 'LOGIN' | 'SELECT_KOLLEL' | 'SETUP_KOLLEL' | 'DASHBOARD';
@@ -70,11 +71,11 @@ const App: React.FC = () => {
   const handleDeleteKollel = async (kollelId: string) => {
     if (window.confirm('האם אתה בטוח שברצונך למחוק את הכולל? לא ניתן לשחזר פעולה זו.')) {
       try {
-          await deleteKollel(kollelId);
-          setKollels(prev => prev.filter(k => k.id !== kollelId));
+        await deleteKollel(kollelId);
+        setKollels(prev => prev.filter(k => k.id !== kollelId));
       } catch (err) {
-          console.error("Failed to delete kollel", err);
-          alert("שגיאה במחיקת הכולל.");
+        console.error("Failed to delete kollel", err);
+        alert("שגיאה במחיקת הכולל.");
       }
     }
   };
@@ -91,26 +92,26 @@ const App: React.FC = () => {
       setAppState('SETUP_KOLLEL');
     }
   };
-  
+
   const handleSetupComplete = async (kollelData: { name: string; managerName?: string; phone?: string; address?: string; }) => {
     try {
       if (editingKollel) { // We are in edit mode
         const kollelToUpdate = { ...editingKollel, ...kollelData };
         const updatedKollel = await updateKollel(kollelToUpdate);
-        
-        setKollels(prev => prev.map(k => 
+
+        setKollels(prev => prev.map(k =>
           k.id === editingKollel.id ? updatedKollel : k
         ));
-        
+
         // If the edited kollel is the selected one, update it
         if (selectedKollel && selectedKollel.id === editingKollel.id) {
-            setSelectedKollel(updatedKollel);
+          setSelectedKollel(updatedKollel);
         }
         setAppState('SELECT_KOLLEL');
       } else { // We are in add new mode
         const newKollelData = {
-            ...kollelData,
-            settings: defaultSettings,
+          ...kollelData,
+          settings: defaultSettings,
         };
         const newKollel = await addKollel(newKollelData);
         setKollels(prev => [...prev, newKollel]);
@@ -131,7 +132,7 @@ const App: React.FC = () => {
       const updatedKollelData = { ...selectedKollel, settings: newSettings };
       const updatedKollel = await updateKollel(updatedKollelData);
 
-      setKollels(prev => prev.map(k => 
+      setKollels(prev => prev.map(k =>
         k.id === selectedKollel.id ? updatedKollel : k
       ));
       setSelectedKollel(updatedKollel);
@@ -140,14 +141,14 @@ const App: React.FC = () => {
       alert("שגיאה בעדכון הגדרות המלגה.");
     }
   };
-  
+
   const handleCancelSetup = () => {
-      setEditingKollel(null);
-      if(kollels.length > 0) {
-          setAppState('SELECT_KOLLEL');
-      } else {
-        setAppState('LOGIN');
-      }
+    setEditingKollel(null);
+    if (kollels.length > 0) {
+      setAppState('SELECT_KOLLEL');
+    } else {
+      setAppState('LOGIN');
+    }
   };
 
   const handleSwitchKollel = () => {
@@ -158,10 +159,10 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     if (isLoading) {
-        return <div className="text-center text-lg animate-pulse">טוען נתונים...</div>;
+      return <div className="text-center text-lg animate-pulse">טוען נתונים...</div>;
     }
     if (error) {
-        return <div className="text-center text-red-500 bg-red-100 dark:bg-red-900/30 p-4 rounded-lg">{error}</div>;
+      return <div className="text-center text-red-500 bg-red-100 dark:bg-red-900/30 p-4 rounded-lg">{error}</div>;
     }
 
     switch (appState) {
@@ -170,21 +171,21 @@ const App: React.FC = () => {
       case 'SELECT_KOLLEL':
         return <KollelSelection kollels={kollels} onSelect={handleSelectKollel} onAdd={handleGoToSetup} onDelete={handleDeleteKollel} onEdit={handleStartEdit} />;
       case 'SETUP_KOLLEL':
-        return <KollelSetup 
-            onSetupComplete={handleSetupComplete} 
-            onCancel={handleCancelSetup} 
-            existingKollel={editingKollel}
+        return <KollelSetup
+          onSetupComplete={handleSetupComplete}
+          onCancel={handleCancelSetup}
+          existingKollel={editingKollel}
         />;
       case 'DASHBOARD':
         if (!selectedKollel) {
           setAppState('SELECT_KOLLEL');
-          return null; 
+          return null;
         }
-        return <Dashboard 
-            kollelDetails={selectedKollel} 
-            onLogout={handleLogout} 
-            onSwitchKollel={handleSwitchKollel}
-            onUpdateSettings={handleUpdateKollelSettings}
+        return <Dashboard
+          kollelDetails={selectedKollel}
+          onLogout={handleLogout}
+          onSwitchKollel={handleSwitchKollel}
+          onUpdateSettings={handleUpdateKollelSettings}
         />;
       default:
         return <Login onLogin={handleLogin} />;
@@ -193,7 +194,8 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4">
-        {renderContent()}
+      {renderContent()}
+      <VersionDisplay />
     </div>
   );
 };
