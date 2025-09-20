@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { KollelDetails, StipendSettings } from './types';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
 import KollelSetup from './components/KollelSetup';
 import Dashboard from './components/Dashboard';
@@ -7,7 +8,7 @@ import KollelSelection from './components/KollelSelection';
 import VersionDisplay from './components/VersionDisplay';
 import { getKollels, addKollel, updateKollel, deleteKollel } from './services/api';
 
-type AppState = 'LOGIN' | 'SELECT_KOLLEL' | 'SETUP_KOLLEL' | 'DASHBOARD';
+type AppState = 'SELECT_KOLLEL' | 'SETUP_KOLLEL' | 'DASHBOARD';
 
 const defaultSettings: StipendSettings = {
   baseStipend: 2000,
@@ -21,44 +22,59 @@ const defaultSettings: StipendSettings = {
   summaryBonus: 0,
 };
 
-const App: React.FC = () => {
-  const [appState, setAppState] = useState<AppState>('LOGIN');
+const AppContent: React.FC = () => {
+  const { isAuthenticated, isLoading, logout, user } = useAuth();
+  const [appState, setAppState] = useState<AppState>('SELECT_KOLLEL');
   const [kollels, setKollels] = useState<KollelDetails[]>([]);
   const [selectedKollel, setSelectedKollel] = useState<KollelDetails | null>(null);
   const [editingKollel, setEditingKollel] = useState<KollelDetails | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isKollelsLoading, setIsKollelsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadKollels = async () => {
-      try {
-        setError(null);
-        setIsLoading(true);
-        const data = await getKollels();
-        setKollels(data);
-      } catch (err) {
-        console.error("Failed to load kollels", err);
-        setError("שגיאה בטעינת הנתונים. נסה לרענן את הדף.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadKollels();
-  }, []);
+    if (isAuthenticated && !isLoading) {
+      loadKollels();
+    }
+  }, [isAuthenticated, isLoading]);
 
-  const handleLogin = () => {
-    if (kollels.length > 0) {
-      setAppState('SELECT_KOLLEL');
-    } else {
-      setAppState('SETUP_KOLLEL');
+  const loadKollels = async () => {
+    try {
+      setError(null);
+      setIsKollelsLoading(true);
+      const data = await getKollels();
+      setKollels(data);
+
+      // If no kollels exist, go to setup
+      if (data.length === 0) {
+        setAppState('SETUP_KOLLEL');
+      }
+    } catch (err) {
+      console.error("Failed to load kollels", err);
+      setError("שגיאה בטעינת הנתונים. נסה לרענן את הדף.");
+    } finally {
+      setIsKollelsLoading(false);
     }
   };
 
-  const handleLogout = () => {
-    setSelectedKollel(null);
-    setEditingKollel(null);
-    setAppState('LOGIN');
-  };
+  // Show loading screen while checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        <div className="text-center text-lg animate-pulse">טוען...</div>
+        <VersionDisplay />
+      </div>
+    );
+  }
+
+  // Show login if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        <Login />
+        <VersionDisplay />
+      </div>
+    );
+  }
 
   const handleSelectKollel = (kollelId: string) => {
     const kollel = kollels.find(k => k.id === kollelId);
@@ -161,9 +177,8 @@ const App: React.FC = () => {
     setEditingKollel(null);
     if (kollels.length > 0) {
       setAppState('SELECT_KOLLEL');
-    } else {
-      setAppState('LOGIN');
     }
+    // Don't go back to LOGIN since we're authenticated
   };
 
   const handleSwitchKollel = () => {
@@ -172,8 +187,14 @@ const App: React.FC = () => {
     setAppState('SELECT_KOLLEL');
   };
 
+  const handleLogout = () => {
+    logout();
+    setSelectedKollel(null);
+    setEditingKollel(null);
+  };
+
   const renderContent = () => {
-    if (isLoading) {
+    if (isKollelsLoading) {
       return <div className="text-center text-lg animate-pulse">טוען נתונים...</div>;
     }
     if (error) {
@@ -181,8 +202,6 @@ const App: React.FC = () => {
     }
 
     switch (appState) {
-      case 'LOGIN':
-        return <Login onLogin={handleLogin} />;
       case 'SELECT_KOLLEL':
         return <KollelSelection kollels={kollels} onSelect={handleSelectKollel} onAdd={handleGoToSetup} onDelete={handleDeleteKollel} onEdit={handleStartEdit} />;
       case 'SETUP_KOLLEL':
@@ -203,7 +222,7 @@ const App: React.FC = () => {
           onUpdateSettings={handleUpdateKollelSettings}
         />;
       default:
-        return <Login onLogin={handleLogin} />;
+        return <KollelSelection kollels={kollels} onSelect={handleSelectKollel} onAdd={handleGoToSetup} onDelete={handleDeleteKollel} onEdit={handleStartEdit} />;
     }
   };
 
@@ -212,6 +231,14 @@ const App: React.FC = () => {
       {renderContent()}
       <VersionDisplay />
     </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 };
 

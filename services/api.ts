@@ -1,6 +1,29 @@
 import type { KollelDetails, MonthlyData, StipendSettings } from '../types';
 
 /**
+ * Gets the authentication token from localStorage
+ */
+const getAuthToken = (): string | null => {
+    return localStorage.getItem('authToken');
+};
+
+/**
+ * Creates headers with authentication if token is available
+ */
+const createAuthHeaders = (): HeadersInit => {
+    const token = getAuthToken();
+    const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+    };
+
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    return headers;
+};
+
+/**
  * Checks if the app is running in an environment that should use localStorage.
  * This is a simple check for being inside an iframe, typical for platforms like AI Studio.
  * @returns {boolean} True if it's likely an iframe environment, false otherwise.
@@ -74,7 +97,9 @@ export const getKollels = async (): Promise<KollelDetails[]> => {
         console.log('API: Fetching kollels from server...');
         console.log('🌐 Making request to:', `${API_BASE_URL}/kollels`);
         try {
-            const response = await fetch(`${API_BASE_URL}/kollels`);
+            const response = await fetch(`${API_BASE_URL}/kollels`, {
+                headers: createAuthHeaders(),
+            });
             console.log('📡 Response status:', response.status);
             console.log('📡 Response headers:', response.headers);
             if (!response.ok) {
@@ -123,7 +148,7 @@ export const addKollel = async (kollelData: { name: string; managerName?: string
         try {
             const response = await fetch(`${API_BASE_URL}/kollels`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: createAuthHeaders(),
                 body: JSON.stringify(kollelData),
             });
             if (!response.ok) throw new Error('Failed to add kollel');
@@ -164,9 +189,10 @@ export const updateKollel = async (updatedKollel: KollelDetails): Promise<Kollel
             // Prepare data for backend - remove id and let MongoDB handle _id
             const { id, ...dataForBackend } = updatedKollel;
 
+            // Fix: Corrected variable from 'updatedKoll_id' to 'updatedKollel.id'.
             const response = await fetch(`${API_BASE_URL}/kollels/${updatedKollel.id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: createAuthHeaders(),
                 body: JSON.stringify(dataForBackend),
             });
             if (!response.ok) throw new Error('Failed to update kollel');
@@ -205,6 +231,7 @@ export const deleteKollel = async (kollelId: string): Promise<void> => {
         try {
             const response = await fetch(`${API_BASE_URL}/kollels/${kollelId}`, {
                 method: 'DELETE',
+                headers: createAuthHeaders(),
             });
             if (!response.ok) throw new Error('Failed to delete kollel');
         } catch (error) {
@@ -239,7 +266,7 @@ export const getSavedData = async (kollelId: string): Promise<MonthlyData[]> => 
             const url = `${API_BASE_URL}/kollels/${kollelId}/data`;
             console.log(`🌐 Making request to: ${url}`);
 
-            const response = await fetch(url);
+            const response = await fetch(url, { headers: createAuthHeaders() });
             console.log(`📡 Response status: ${response.status} ${response.statusText}`);
 
             if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -270,7 +297,7 @@ export const saveMonthlyData = async (kollelId: string, newData: MonthlyData): P
         try {
             const response = await fetch(`${API_BASE_URL}/kollels/${kollelId}/data`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: createAuthHeaders(),
                 body: JSON.stringify(newData),
             });
             if (!response.ok) throw new Error('Failed to save monthly data');
@@ -297,6 +324,7 @@ export const deleteMonthlyData = async (kollelId: string, monthYearToDelete: str
             const monthYearParam = monthYearToDelete.replace('/', '-');
             const response = await fetch(`${API_BASE_URL}/kollels/${kollelId}/data/${monthYearParam}`, {
                 method: 'DELETE',
+                headers: createAuthHeaders(),
             });
             if (!response.ok) throw new Error('Failed to delete monthly data');
         } catch (error) {
