@@ -6,21 +6,19 @@ import type { KollelDetails, MonthlyData, StipendSettings } from '../types';
  * @returns {boolean} True if it's likely an iframe environment, false otherwise.
  */
 const isStudioEnv = (): boolean => {
-    // For development, always use the server unless explicitly in an iframe
+    // For development, always use the server API - no exceptions
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        try {
-            // Only use localStorage if we're actually in an iframe (AI Studio)
-            return window.self !== window.top;
-        } catch (e) {
-            // Accessing window.top can throw a cross-origin error, which means it's in an iframe.
-            return true;
-        }
+        console.log('🔧 API Service - Running on localhost, using server API');
+        return false;
     }
 
-    // For production deployments, also check iframe status
+    // For production deployments, check iframe status
     try {
-        return window.self !== window.top;
+        const isInIframe = window.self !== window.top;
+        console.log('🔧 API Service - Production environment, in iframe:', isInIframe);
+        return isInIframe;
     } catch (e) {
+        console.log('🔧 API Service - Cross-origin error detected, assuming iframe environment');
         return true;
     }
 };
@@ -86,7 +84,17 @@ export const getKollels = async (): Promise<KollelDetails[]> => {
             }
             const data = await response.json();
             console.log('✅ Successful response data:', data);
-            return data;
+
+            // Transform MongoDB _id to id for frontend compatibility
+            const transformedData = data.map((kollel: any) => ({
+                ...kollel,
+                id: kollel._id,
+                // Remove _id to avoid confusion
+                _id: undefined
+            }));
+
+            console.log('🔄 Transformed data with proper IDs:', transformedData);
+            return transformedData;
         } catch (error) {
             console.error('Failed to fetch kollels from server:', error);
             throw error;
@@ -119,7 +127,19 @@ export const addKollel = async (kollelData: { name: string; managerName?: string
                 body: JSON.stringify(kollelData),
             });
             if (!response.ok) throw new Error('Failed to add kollel');
-            return response.json();
+
+            const responseData = await response.json();
+            console.log('✅ Add kollel response:', responseData);
+
+            // Transform response data _id to id
+            const transformedResponse = {
+                ...responseData,
+                id: responseData._id,
+                _id: undefined
+            };
+
+            console.log('🔄 Transformed add response:', transformedResponse);
+            return transformedResponse;
         } catch (error) {
             console.error('Failed to add kollel on server:', error);
             throw error;
@@ -141,13 +161,28 @@ export const updateKollel = async (updatedKollel: KollelDetails): Promise<Kollel
         // SERVER-SIDE IMPLEMENTATION
         console.log(`API: Updating kollel ${updatedKollel.id} on server...`);
         try {
+            // Prepare data for backend - remove id and let MongoDB handle _id
+            const { id, ...dataForBackend } = updatedKollel;
+
             const response = await fetch(`${API_BASE_URL}/kollels/${updatedKollel.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updatedKollel),
+                body: JSON.stringify(dataForBackend),
             });
             if (!response.ok) throw new Error('Failed to update kollel');
-            return response.json();
+
+            const responseData = await response.json();
+            console.log('✅ Update response:', responseData);
+
+            // Transform response data _id to id
+            const transformedResponse = {
+                ...responseData,
+                id: responseData._id,
+                _id: undefined
+            };
+
+            console.log('🔄 Transformed update response:', transformedResponse);
+            return transformedResponse;
         } catch (error) {
             console.error('Failed to update kollel on server:', error);
             throw error;
@@ -186,6 +221,8 @@ export const deleteKollel = async (kollelId: string): Promise<void> => {
  * Fetches saved monthly reports for a specific kollel.
  */
 export const getSavedData = async (kollelId: string): Promise<MonthlyData[]> => {
+    console.log(`🔍 getSavedData called for kollel: ${kollelId}`);
+
     if (isStudioEnv()) {
         console.log(`API: Using localStorage for getSavedData for kollel ${kollelId}`);
         try {
@@ -199,11 +236,19 @@ export const getSavedData = async (kollelId: string): Promise<MonthlyData[]> => 
         // SERVER-SIDE IMPLEMENTATION
         console.log(`API: Fetching saved data for kollel ${kollelId} from server...`);
         try {
-            const response = await fetch(`${API_BASE_URL}/kollels/${kollelId}/data`);
-            if (!response.ok) throw new Error('Failed to fetch saved data');
-            return response.json();
+            const url = `${API_BASE_URL}/kollels/${kollelId}/data`;
+            console.log(`🌐 Making request to: ${url}`);
+
+            const response = await fetch(url);
+            console.log(`📡 Response status: ${response.status} ${response.statusText}`);
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+            const data = await response.json();
+            console.log(`✅ Received data:`, data);
+            return data;
         } catch (error) {
-            console.error('Failed to fetch saved data from server:', error);
+            console.error('❌ Failed to fetch saved data from server:', error);
             throw error;
         }
     }

@@ -126,18 +126,33 @@ const App: React.FC = () => {
   };
 
   const handleUpdateKollelSettings = async (newSettings: StipendSettings) => {
-    if (!selectedKollel) return;
+    if (!selectedKollel) {
+      console.error('❌ No kollel selected');
+      return;
+    }
+
+    if (!selectedKollel.id || selectedKollel.id === 'undefined') {
+      console.error('❌ Invalid kollel ID:', selectedKollel.id);
+      alert("שגיאה: זיהוי הכולל לא תקין");
+      return;
+    }
+
+    console.log('🔄 Updating kollel settings for kollel:', selectedKollel.id);
+    console.log('📊 New settings:', newSettings);
 
     try {
       const updatedKollelData = { ...selectedKollel, settings: newSettings };
+      console.log('📤 Sending update request with data:', updatedKollelData);
+
       const updatedKollel = await updateKollel(updatedKollelData);
 
       setKollels(prev => prev.map(k =>
         k.id === selectedKollel.id ? updatedKollel : k
       ));
       setSelectedKollel(updatedKollel);
+      console.log('✅ Successfully updated kollel settings');
     } catch (err) {
-      console.error("Failed to update settings", err);
+      console.error("❌ Failed to update settings", err);
       alert("שגיאה בעדכון הגדרות המלגה.");
     }
   };
