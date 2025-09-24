@@ -25,7 +25,8 @@ const Reports: React.FC<ReportsProps> = ({ savedData, onBack, kollelDetails }) =
         const [bMonth, bYear] = b.split('/');
         return (parseInt(bYear) - parseInt(aYear)) || (parseInt(bMonth) - parseInt(aMonth));
     });
-    const scholars = [...new Set(savedData.flatMap(d => d.results.map(r => r.name)))].sort((a,b) => a.localeCompare(b, 'he'));
+    // Fix: Explicitly type `a` and `b` as strings to resolve a type inference issue.
+    const scholars = [...new Set(savedData.flatMap(d => d.results.map(r => r.name)))].sort((a: string, b: string) => a.localeCompare(b, 'he'));
     return { availableMonths: months, availableScholars: scholars };
   }, [savedData]);
   

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { KollelDetails, StipendSettings } from './types';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
+import Header from './components/Header';
 import KollelSetup from './components/KollelSetup';
 import Dashboard from './components/Dashboard';
 import KollelSelection from './components/KollelSelection';
@@ -23,7 +24,7 @@ const defaultSettings: StipendSettings = {
 };
 
 const AppContent: React.FC = () => {
-  const { isAuthenticated, isLoading, logout, user } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
   const [appState, setAppState] = useState<AppState>('SELECT_KOLLEL');
   const [kollels, setKollels] = useState<KollelDetails[]>([]);
   const [selectedKollel, setSelectedKollel] = useState<KollelDetails | null>(null);
@@ -36,6 +37,16 @@ const AppContent: React.FC = () => {
       loadKollels();
     }
   }, [isAuthenticated, isLoading]);
+  
+  // Effect to reset state on logout
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setSelectedKollel(null);
+      setEditingKollel(null);
+      setKollels([]);
+      setAppState('SELECT_KOLLEL');
+    }
+  }, [isAuthenticated]);
 
   const loadKollels = async () => {
     try {
@@ -55,26 +66,6 @@ const AppContent: React.FC = () => {
       setIsKollelsLoading(false);
     }
   };
-
-  // Show loading screen while checking authentication
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4">
-        <div className="text-center text-lg animate-pulse">טוען...</div>
-        <VersionDisplay />
-      </div>
-    );
-  }
-
-  // Show login if not authenticated
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4">
-        <Login />
-        <VersionDisplay />
-      </div>
-    );
-  }
 
   const handleSelectKollel = (kollelId: string) => {
     const kollel = kollels.find(k => k.id === kollelId);
@@ -187,13 +178,15 @@ const AppContent: React.FC = () => {
     setAppState('SELECT_KOLLEL');
   };
 
-  const handleLogout = () => {
-    logout();
-    setSelectedKollel(null);
-    setEditingKollel(null);
-  };
-
   const renderContent = () => {
+    if (isLoading) {
+       return <div className="text-center text-lg animate-pulse">טוען...</div>;
+    }
+
+    if (!isAuthenticated) {
+        return <Login />;
+    }
+    
     if (isKollelsLoading) {
       return <div className="text-center text-lg animate-pulse">טוען נתונים...</div>;
     }
@@ -217,7 +210,6 @@ const AppContent: React.FC = () => {
         }
         return <Dashboard
           kollelDetails={selectedKollel}
-          onLogout={handleLogout}
           onSwitchKollel={handleSwitchKollel}
           onUpdateSettings={handleUpdateKollelSettings}
         />;
@@ -227,8 +219,11 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4">
-      {renderContent()}
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200">
+      <Header />
+      <main className="flex flex-col items-center justify-center p-4">
+        {renderContent()}
+      </main>
       <VersionDisplay />
     </div>
   );

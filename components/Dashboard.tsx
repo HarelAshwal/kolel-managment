@@ -8,7 +8,6 @@ import Reports from './Reports';
 // Fix: Renamed component import to avoid name collision with the StipendSettings type.
 import StipendSettingsComponent from './StipendSettings';
 import { UploadIcon } from './icons/UploadIcon';
-import { LogoutIcon } from './icons/LogoutIcon';
 import { SettingsIcon } from './icons/SettingsIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
 import { HistoryIcon } from './icons/HistoryIcon';
@@ -21,14 +20,13 @@ import { CoinsIcon } from './icons/CoinsIcon';
 
 interface DashboardProps {
   kollelDetails: KollelDetails;
-  onLogout: () => void;
   onSwitchKollel: () => void;
   onUpdateSettings: (settings: StipendSettings) => void;
 }
 
 type DashboardView = 'CHOICE' | 'VIEW_SAVED' | 'SHOW_RESULTS' | 'REPORTS' | 'STIPEND_SETTINGS';
 
-const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onLogout, onSwitchKollel, onUpdateSettings }) => {
+const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, onUpdateSettings }) => {
   const [view, setView] = useState<DashboardView>('CHOICE');
   const [stipendResults, setStipendResults] = useState<StipendResult[] | null>(null);
   const [monthYear, setMonthYear] = useState<string | null>(null);
@@ -328,9 +326,6 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onLogout, onSwitch
           <button onClick={onSwitchKollel} className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" title="ניהול כוללים">
             <SettingsIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" />
             <span className="hidden sm:inline text-sm font-medium">ניהול כוללים</span>
-          </button>
-          <button onClick={onLogout} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" title="התנתקות">
-            <LogoutIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" />
           </button>
         </div>
       </header>
