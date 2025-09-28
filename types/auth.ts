@@ -4,6 +4,7 @@ export interface User {
     name: string;
     picture?: string;
     isAdmin: boolean;
+    isSuperAdmin?: boolean;
 }
 
 export interface AuthState {
@@ -16,4 +17,5 @@ export interface AuthState {
 export interface AuthContextType extends AuthState {
     login: () => void;
     logout: () => void;
+    checkAdminStatus: (token: string) => Promise<boolean>;
 }

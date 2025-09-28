@@ -33,9 +33,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
 
+    // SERVER-SIDE ADMIN CHECK - Secure
+    const checkAdminStatus = async (authToken: string): Promise<boolean> => {
+        try {
+            const response = await fetch('/api/auth/check-admin', {
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Server admin check:', data.isSuperAdmin, 'for email:', data.email);
+                return data.isSuperAdmin;
+            }
+            console.error('Admin check failed:', response.status, response.statusText);
+            return false;
+        } catch (error) {
+            console.error('Error checking admin status:', error);
+            return false;
+        }
+    };
+
     useEffect(() => {
         // Check for token and user data in localStorage or URL params
-        const checkAuth = () => {
+        const checkAuth = async () => {
             try {
                 // Check URL params first (from OAuth redirect)
                 const urlParams = new URLSearchParams(window.location.search);
@@ -52,10 +75,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 if (urlToken && urlUser) {
                     // Store in localStorage and set state
                     const userData = JSON.parse(decodeURIComponent(urlUser));
+
+                    // SERVER-SIDE ADMIN CHECK
+                    const isSuperAdmin = await checkAdminStatus(urlToken);
+                    const userWithAdminFlag = {
+                        ...userData,
+                        isSuperAdmin
+                    };
+
                     localStorage.setItem('authToken', urlToken);
-                    localStorage.setItem('userData', JSON.stringify(userData));
+                    localStorage.setItem('userData', JSON.stringify(userWithAdminFlag));
                     setToken(urlToken);
-                    setUser(userData);
+                    setUser(userWithAdminFlag);
                     setIsAuthenticated(true);
 
                     // Clean up URL
@@ -66,8 +97,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                     const storedUser = localStorage.getItem('userData');
 
                     if (storedToken && storedUser) {
+                        const userData = JSON.parse(storedUser);
+
+                        // Always recheck admin status from server
+                        const isSuperAdmin = await checkAdminStatus(storedToken);
+                        const userWithAdminFlag = {
+                            ...userData,
+                            isSuperAdmin
+                        };
                         setToken(storedToken);
-                        setUser(JSON.parse(storedUser));
+                        setUser(userWithAdminFlag);
                         setIsAuthenticated(true);
                     }
                 }
@@ -123,6 +162,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         isLoading,
         login,
         logout,
+        checkAdminStatus,
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

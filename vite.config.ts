@@ -15,6 +15,13 @@ export default defineConfig(({ mode }) => {
         '@': path.dirname(fileURLToPath(import.meta.url)),
       }
     },
+    build: {
+      // Optimize for development hot reload
+      watch: mode === 'development' ? {} : null,
+      sourcemap: true,
+      outDir: 'dist',
+      emptyOutDir: true,
+    },
     server: {
       proxy: {
         '/api': {

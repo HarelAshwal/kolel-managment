@@ -128,6 +128,59 @@ export const getKollels = async (): Promise<KollelDetails[]> => {
 };
 
 /**
+ * Get all kollels for super admin (includes owner information)
+ */
+export const getAllKollelsForAdmin = async (): Promise<KollelDetails[]> => {
+    const studioEnv = isStudioEnv();
+    console.log('🔍 getAllKollelsForAdmin Debug Info:', {
+        isStudioEnv: studioEnv,
+        apiBaseUrl: API_BASE_URL
+    });
+
+    if (studioEnv) {
+        // In studio environment, return the same as regular kollels
+        return getKollels();
+    } else {
+        // SERVER-SIDE IMPLEMENTATION
+        console.log('API: Fetching all kollels for admin from server...');
+        console.log('🌐 Making request to:', `${API_BASE_URL}/kollels/admin/all`);
+        try {
+            const response = await fetch(`${API_BASE_URL}/kollels/admin/all`, {
+                headers: createAuthHeaders(),
+            });
+            console.log('📡 Admin response status:', response.status);
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Admin response error text:', errorText);
+                throw new Error(`Failed to fetch all kollels: ${response.status} ${response.statusText}`);
+            }
+            const data = await response.json();
+            console.log('✅ All kollels fetched successfully for admin:', data);
+
+            // Transform MongoDB _id to id for frontend compatibility
+            const transformedData = data.map((kollel: any) => ({
+                ...kollel,
+                id: kollel._id,
+                // Preserve userId information for super admin view
+                userId: kollel.userId ? {
+                    _id: kollel.userId._id,
+                    name: kollel.userId.name,
+                    email: kollel.userId.email
+                } : undefined,
+                // Remove _id to avoid confusion
+                _id: undefined
+            }));
+
+            console.log('🔄 Admin transformed data with proper IDs:', transformedData);
+            return transformedData;
+        } catch (error) {
+            console.error('❌ Error fetching all kollels for admin:', error);
+            throw error;
+        }
+    }
+};
+
+/**
  * Adds a new kollel.
  */
 export const addKollel = async (kollelData: { name: string; managerName?: string; phone?: string; address?: string; settings: StipendSettings }): Promise<KollelDetails> => {

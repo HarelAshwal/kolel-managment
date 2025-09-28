@@ -17,6 +17,11 @@ export interface KollelDetails {
   phone?: string;
   address?: string;
   settings: StipendSettings;
+  userId?: {
+    _id?: string;
+    name?: string;
+    email?: string;
+  } | string; // Can be populated object or just ObjectId string
 }
 
 export interface AttendanceRecord {

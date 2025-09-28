@@ -6,10 +6,11 @@ import Header from './components/Header';
 import KollelSetup from './components/KollelSetup';
 import Dashboard from './components/Dashboard';
 import KollelSelection from './components/KollelSelection';
+import SuperAdminPanel from './components/SuperAdminPanel';
 import VersionDisplay from './components/VersionDisplay';
-import { getKollels, addKollel, updateKollel, deleteKollel } from './services/api';
+import { getKollels, getAllKollelsForAdmin, addKollel, updateKollel, deleteKollel } from './services/api';
 
-type AppState = 'SELECT_KOLLEL' | 'SETUP_KOLLEL' | 'DASHBOARD';
+type AppState = 'SELECT_KOLLEL' | 'SETUP_KOLLEL' | 'DASHBOARD' | 'SUPER_ADMIN';
 
 const defaultSettings: StipendSettings = {
   baseStipend: 2000,
@@ -24,7 +25,7 @@ const defaultSettings: StipendSettings = {
 };
 
 const AppContent: React.FC = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const [appState, setAppState] = useState<AppState>('SELECT_KOLLEL');
   const [kollels, setKollels] = useState<KollelDetails[]>([]);
   const [selectedKollel, setSelectedKollel] = useState<KollelDetails | null>(null);
@@ -33,11 +34,11 @@ const AppContent: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isAuthenticated && !isLoading) {
+    if (isAuthenticated && !isLoading && user) {
       loadKollels();
     }
-  }, [isAuthenticated, isLoading]);
-  
+  }, [isAuthenticated, isLoading, user?.isSuperAdmin]);
+
   // Effect to reset state on logout
   useEffect(() => {
     if (!isAuthenticated) {
@@ -52,11 +53,17 @@ const AppContent: React.FC = () => {
     try {
       setError(null);
       setIsKollelsLoading(true);
-      const data = await getKollels();
+
+      // Use admin API if user is super admin, otherwise use regular API
+      const data = user?.isSuperAdmin
+        ? await getAllKollelsForAdmin()
+        : await getKollels();
+
+      console.log('🔧 Loaded kollels:', data.length, 'kollels for user:', user?.email, 'isSuperAdmin:', user?.isSuperAdmin);
       setKollels(data);
 
-      // If no kollels exist, go to setup
-      if (data.length === 0) {
+      // If no kollels exist, go to setup (only for non-admin users)
+      if (data.length === 0 && !user?.isSuperAdmin) {
         setAppState('SETUP_KOLLEL');
       }
     } catch (err) {
@@ -111,6 +118,7 @@ const AppContent: React.FC = () => {
         ));
 
         // If the edited kollel is the selected one, update it
+        // Fix: Corrected typo from `selectedKolel` to `selectedKollel`.
         if (selectedKollel && selectedKollel.id === editingKollel.id) {
           setSelectedKollel(updatedKollel);
         }
@@ -178,15 +186,24 @@ const AppContent: React.FC = () => {
     setAppState('SELECT_KOLLEL');
   };
 
+  const handleShowSuperAdmin = () => {
+    setAppState('SUPER_ADMIN');
+  };
+
+  const handleSelectKollelFromAdmin = (kollel: KollelDetails) => {
+    setSelectedKollel(kollel);
+    setAppState('DASHBOARD');
+  };
+
   const renderContent = () => {
     if (isLoading) {
-       return <div className="text-center text-lg animate-pulse">טוען...</div>;
+      return <div className="text-center text-lg animate-pulse">טוען...</div>;
     }
 
     if (!isAuthenticated) {
-        return <Login />;
+      return <Login />;
     }
-    
+
     if (isKollelsLoading) {
       return <div className="text-center text-lg animate-pulse">טוען נתונים...</div>;
     }
@@ -213,14 +230,43 @@ const AppContent: React.FC = () => {
           onSwitchKollel={handleSwitchKollel}
           onUpdateSettings={handleUpdateKollelSettings}
         />;
+      case 'SUPER_ADMIN':
+        return (
+          <div>
+            <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
+              <button
+                onClick={() => setAppState('SELECT_KOLLEL')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem'
+                }}
+              >
+                ← חזור לכוללים שלי
+              </button>
+            </div>
+            <SuperAdminPanel onSelectKollel={handleSelectKollelFromAdmin} />
+          </div>
+        );
       default:
-        return <KollelSelection kollels={kollels} onSelect={handleSelectKollel} onAdd={handleGoToSetup} onDelete={handleDeleteKollel} onEdit={handleStartEdit} />;
+        return <KollelSelection
+          kollels={kollels}
+          onSelect={handleSelectKollel}
+          onAdd={handleGoToSetup}
+          onDelete={handleDeleteKollel}
+          onEdit={handleStartEdit}
+          isSuperAdmin={user?.isSuperAdmin}
+        />;
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200">
-      <Header />
+      <Header onShowSuperAdmin={user?.isSuperAdmin ? handleShowSuperAdmin : undefined} />
       <main className="flex flex-col items-center justify-center p-4">
         {renderContent()}
       </main>
