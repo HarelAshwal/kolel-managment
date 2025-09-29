@@ -183,7 +183,7 @@ export const getAllKollelsForAdmin = async (): Promise<KollelDetails[]> => {
 /**
  * Adds a new kollel.
  */
-export const addKollel = async (kollelData: { name: string; managerName?: string; phone?: string; address?: string; settings: StipendSettings }): Promise<KollelDetails> => {
+export const addKollel = async (kollelData: { name: string; managerName?: string; phone?: string; address?: string; settings: StipendSettings; sharedWith?: string[] }): Promise<KollelDetails> => {
     const newKollel: KollelDetails = {
         id: Date.now().toString(),
         ...kollelData

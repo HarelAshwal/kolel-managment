@@ -4,10 +4,9 @@ import { LogoutIcon } from './icons/LogoutIcon';
 import { UserIcon } from './icons/UserIcon';
 
 interface HeaderProps {
-    onShowSuperAdmin?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onShowSuperAdmin }) => {
+const Header: React.FC<HeaderProps> = () => {
     const { isAuthenticated, user, logout } = useAuth();
 
     return (
@@ -38,17 +37,7 @@ const Header: React.FC<HeaderProps> = ({ onShowSuperAdmin }) => {
                                 )}
                             </div>
 
-                            {/* Super Admin Button - Hebrew text */}
-                            {user.isSuperAdmin && onShowSuperAdmin && (
-                                <button
-                                    onClick={onShowSuperAdmin}
-                                    className="bg-purple-600 hover:bg-purple-700 text-white text-sm px-3 py-2 rounded-lg transition-colors duration-200 flex items-center gap-1"
-                                    title="פאנל מנהל מערכת"
-                                >
-                                    <span>👑</span>
-                                    <span className="hidden sm:inline">ניהול מערכת</span>
-                                </button>
-                            )}
+                            {/* Removed ניהול מערכת button for super admin */}
 
                             <button
                                 onClick={logout}

@@ -22,6 +22,7 @@ export interface KollelDetails {
     name?: string;
     email?: string;
   } | string; // Can be populated object or just ObjectId string
+  sharedWith?: string[];
 }
 
 export interface AttendanceRecord {

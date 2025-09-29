@@ -33,8 +33,8 @@ const KollelSelection: React.FC<KollelSelectionProps> = ({ kollels, onSelect, on
 
   return (
     <div className="w-full max-w-2xl mx-auto bg-white dark:bg-slate-800 shadow-2xl rounded-2xl p-8">
-      <h2 className={`text-3xl font-bold text-center mb-2 ${isSuperAdmin ? 'text-purple-600 dark:text-purple-400' : 'text-slate-900 dark:text-white'}`}>
-        {isSuperAdmin ? '👑 כל הכוללים במערכת' : 'בחירת כולל'}
+      <h2 className="text-3xl font-bold text-center mb-2 text-slate-900 dark:text-white">
+        בחירת כולל
       </h2>
       <p className="text-center text-slate-500 dark:text-slate-400 mb-8">
         {isSuperAdmin
@@ -58,19 +58,26 @@ const KollelSelection: React.FC<KollelSelectionProps> = ({ kollels, onSelect, on
                     <span>{kollel.managerName}</span>
                   </div>
                 )}
-                {/* Super Admin: Show Owner Information */}
-                {isSuperAdmin && (
-                  <div className="flex items-center gap-2 text-sm text-purple-600 dark:text-purple-400 mt-1 bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded">
-                    <span>👤</span>
+                {/* Always show Gmail user who created the kolel */}
+                <div className="flex flex-col gap-1 mt-1">
+                  <div className="flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded">
+                    <span>📧</span>
                     {kollel.userId && typeof kollel.userId === 'object' ? (
-                      <span>בעלים: {kollel.userId.name || kollel.userId.email || 'לא זמין'}</span>
+                      <span>נוצר ע"י: {kollel.userId.email || kollel.userId.name || 'לא זמין'}</span>
                     ) : kollel.userId ? (
-                      <span>בעלים: {kollel.userId}</span>
+                      <span>נוצר ע"י: {kollel.userId}</span>
                     ) : (
-                      <span>בעלים: כולל ישן (ללא משתמש מוגדר)</span>
+                      <span>נוצר ע"י: כולל ישן (ללא משתמש מוגדר)</span>
                     )}
                   </div>
-                )}
+                  {Array.isArray(kollel.sharedWith) && kollel.sharedWith.length > 0 && (
+                    <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/40 px-2 py-1 rounded">
+                      <span>🤝</span>
+                      <span>שותף עם:</span>
+                      <span>{kollel.sharedWith.join(', ')}</span>
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mt-1">
                   <ShekelIcon className="w-4 h-4" />
                   <span>סכום בסיס: {kollel.settings.baseStipend} ש"ח</span>
