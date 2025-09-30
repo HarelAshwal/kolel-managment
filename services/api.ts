@@ -386,3 +386,60 @@ export const deleteMonthlyData = async (kollelId: string, monthYearToDelete: str
         }
     }
 };
+
+/**
+ * Sends a natural language prompt to the backend to generate stipend settings using AI.
+ * @param prompt The user's description of the stipend calculation.
+ * @returns A promise that resolves to a StipendSettings object.
+ */
+export const generateStipendSettingsFromPrompt = async (prompt: string): Promise<StipendSettings> => {
+    // In Studio/preview mode, this should return a dummy result for demonstration.
+    if (isStudioEnv()) {
+        console.log('API: Using dummy data for generateStipendSettingsFromPrompt in Studio Env');
+        // Simulate network delay to show the loading state
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // Create a plausible dummy response. Let's try to parse the prompt slightly for a better demo.
+        const baseStipendMatch = prompt.match(/(\d{4,})/); // Look for a 4+ digit number (e.g., 2000)
+        const deductionMatch = prompt.match(/(\d{1,3})\s*(שקלים|ש"ח)\s*לשעה/); // e.g., "25 שקלים לשעה"
+        const hoursMatch = prompt.match(/(\d{1,2}(\.\d{1,2})?)\s*שעות/); // e.g., "7 שעות"
+
+        const dummySettings: StipendSettings = {
+            baseStipend: baseStipendMatch ? parseInt(baseStipendMatch[0], 10) : 2150,
+            deductionPerHour: deductionMatch ? parseInt(deductionMatch[1], 10) : 27,
+            dailyHoursTarget: hoursMatch ? parseFloat(hoursMatch[1]) : 7.5,
+            sederA_start: '09:00',
+            sederA_end: '13:00',
+            sederB_start: '16:00',
+            sederB_end: '19:00',
+            testBonus: 0,
+            summaryBonus: 0,
+        };
+        console.log('✅ Returning dummy AI-generated settings:', dummySettings);
+        return Promise.resolve(dummySettings);
+    }
+
+    // This function will always target the server-side API for production/development,
+    // as the AI logic cannot run in localStorage.
+    console.log(`API: Sending prompt to AI for settings generation...`);
+    try {
+        const response = await fetch(`${API_BASE_URL}/kollels/generate-settings`, {
+            method: 'POST',
+            headers: createAuthHeaders(),
+            body: JSON.stringify({ prompt }),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Failed to generate settings from prompt' }));
+            console.error('Error from server:', errorData);
+            throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        }
+
+        const settings = await response.json();
+        console.log('✅ Received AI-generated settings:', settings);
+        return settings;
+    } catch (error) {
+        console.error('Failed to generate stipend settings from prompt:', error);
+        throw error;
+    }
+};

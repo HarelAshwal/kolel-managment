@@ -143,7 +143,8 @@ const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onSelectKollel }) => 
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.899a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                                                 </svg>
-                                                {kollel.location}
+                                                {/* Fix: Property 'location' does not exist on type 'KollelDetails'. Use 'address' instead. */}
+                                                {kollel.address}
                                             </div>
 
                                             {/* Owner Information - Only visible to super admin */}
@@ -177,7 +178,8 @@ const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onSelectKollel }) => 
 
                                         <div className="mt-3 pt-3 border-t border-gray-100">
                                             <div className="flex items-center justify-between text-xs text-gray-500">
-                                                <span>שכר יומי: ₪{kollel.stipendSettings?.dailyAmount || 0}</span>
+                                                {/* Fix: Property 'stipendSettings' does not exist on type 'KollelDetails'. Use 'settings' instead. */}
+                                                <span>שכר יומי: ₪{kollel.settings?.dailyAmount || 0}</span>
                                                 <span className={`px-2 py-1 rounded-full ${kollel.isActive
                                                     ? 'bg-green-100 text-green-800'
                                                     : 'bg-gray-100 text-gray-800'

@@ -21,6 +21,7 @@ const defaultSettings: StipendSettings = {
   sederB_end: '19:00',
   testBonus: 0,
   summaryBonus: 0,
+  lastAiPrompt: 'מלגה חודשית של 2000 שקלים. על כל שעת חיסור מתחת ל-7 שעות ביום, יש להוריד 25 שקלים.',
 };
 
 const AppContent: React.FC = () => {

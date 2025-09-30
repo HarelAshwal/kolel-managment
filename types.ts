@@ -8,6 +8,9 @@ export interface StipendSettings {
   sederB_end: string;
   testBonus: number;
   summaryBonus: number;
+  // Fix: Add optional property to support SuperAdminPanel component
+  dailyAmount?: number;
+  lastAiPrompt?: string;
 }
 
 export interface KollelDetails {
@@ -23,6 +26,10 @@ export interface KollelDetails {
     email?: string;
   } | string; // Can be populated object or just ObjectId string
   sharedWith?: string[];
+  // Fix: Add optional properties to support SuperAdminPanel component
+  totalStudents?: number;
+  establishedDate?: string | Date;
+  isActive?: boolean;
 }
 
 export interface AttendanceRecord {
