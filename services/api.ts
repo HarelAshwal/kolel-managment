@@ -396,24 +396,50 @@ export const generateStipendSettingsFromPrompt = async (prompt: string): Promise
     // In Studio/preview mode, this should return a dummy result for demonstration.
     if (isStudioEnv()) {
         console.log('API: Using dummy data for generateStipendSettingsFromPrompt in Studio Env');
-        // Simulate network delay to show the loading state
         await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // Create a plausible dummy response. Let's try to parse the prompt slightly for a better demo.
-        const baseStipendMatch = prompt.match(/(\d{4,})/); // Look for a 4+ digit number (e.g., 2000)
-        const deductionMatch = prompt.match(/(\d{1,3})\s*(שקלים|ש"ח)\s*לשעה/); // e.g., "25 שקלים לשעה"
-        const hoursMatch = prompt.match(/(\d{1,2}(\.\d{1,2})?)\s*שעות/); // e.g., "7 שעות"
+        const baseStipendMatch = prompt.match(/(\d{4,})/);
+        const deductionMatch = prompt.match(/(\d{1,3})\s*(שקלים|ש"ח)\s*לשעה/);
+        const deductionRate = deductionMatch ? parseInt(deductionMatch[1], 10) : 27;
 
         const dummySettings: StipendSettings = {
             baseStipend: baseStipendMatch ? parseInt(baseStipendMatch[0], 10) : 2150,
-            deductionPerHour: deductionMatch ? parseInt(deductionMatch[1], 10) : 27,
-            dailyHoursTarget: hoursMatch ? parseFloat(hoursMatch[1]) : 7.5,
-            sederA_start: '09:00',
-            sederA_end: '13:00',
-            sederB_start: '16:00',
-            sederB_end: '19:00',
-            testBonus: 0,
-            summaryBonus: 0,
+            deductions: {
+                highRate: deductionRate,
+                lowRate: deductionRate * 0.8,
+                attendanceThresholdPercent: 90,
+            },
+            sedarim: [
+                {
+                    id: 1,
+                    name: "סדר א'",
+                    startTime: '09:00',
+                    endTime: '13:00',
+                    punctualityBonusEnabled: false,
+                    punctualityLateThresholdMinutes: 10,
+                    punctualityBonusAmount: 0,
+                    punctualityBonusCancellationThreshold: 4,
+                    partialStipendPercentage: 55,
+                    useCustomDeductions: false,
+                    deductions: { highRate: 25, lowRate: 20, attendanceThresholdPercent: 90 },
+                },
+                {
+                    id: 2,
+                    name: "סדר ב'",
+                    startTime: '16:00',
+                    endTime: '19:00',
+                    punctualityBonusEnabled: false,
+                    punctualityLateThresholdMinutes: 10,
+                    punctualityBonusAmount: 0,
+                    punctualityBonusCancellationThreshold: 4,
+                    partialStipendPercentage: 45,
+                    useCustomDeductions: false,
+                    deductions: { highRate: 25, lowRate: 20, attendanceThresholdPercent: 90 },
+                },
+            ],
+            generalBonuses: [],
+            bonusAttendanceThresholdPercent: 80,
+            rounding: 'none',
         };
         console.log('✅ Returning dummy AI-generated settings:', dummySettings);
         return Promise.resolve(dummySettings);

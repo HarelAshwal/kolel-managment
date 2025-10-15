@@ -7,6 +7,12 @@ const parseMonthYear = (monthYear: string): Date => {
     return new Date(fullYear, parseInt(month) - 1);
 };
 
+const timeToDecimal = (time: string): number => {
+    if (!time || !/^\d{1,2}:\d{2}$/.test(time)) return NaN;
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours + minutes / 60;
+};
+
 export const generateReport = (
   allData: MonthlyData[],
   selectedMonths: string[],
@@ -14,7 +20,15 @@ export const generateReport = (
   kollelDetails: KollelDetails
 ): { summary: ReportSummary; details: ScholarReportData[]; timeline: TimelineDataPoint[] } => {
   const filteredByMonth = allData.filter(d => selectedMonths.includes(d.monthYear));
-  const dailyTarget = kollelDetails.settings.dailyHoursTarget;
+  
+  const dailyTarget = (kollelDetails.settings.sedarim || []).reduce((total, seder) => {
+    const start = timeToDecimal(seder.startTime);
+    const end = timeToDecimal(seder.endTime);
+    if (!isNaN(start) && !isNaN(end) && end > start) {
+        return total + (end - start);
+    }
+    return total;
+  }, 0);
 
   const aggregation: { [scholarName: string]: { totalHours: number, monthsCount: number, totalTargetHours: number } } = {};
 
@@ -26,7 +40,7 @@ export const generateReport = (
       aggregation[result.name].totalHours += result.totalHours;
       aggregation[result.name].monthsCount += 1;
       
-      const activeDays = result.details?.filter(d => d.hours > 0).length || 0;
+      const activeDays = result.details?.filter(d => Object.values(d.sederHours).reduce((a, b) => a + b, 0) > 0 && d.rawTime !== 'חופש').length || 0;
       aggregation[result.name].totalTargetHours += activeDays * dailyTarget;
     }
   }

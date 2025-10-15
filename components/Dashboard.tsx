@@ -38,11 +38,6 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
   const [isDataLoading, setIsDataLoading] = useState<boolean>(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // State for AI-powered settings to persist navigation
-  const [aiPrompt, setAiPrompt] = useState<string>('');
-  const [aiGeneratedSettings, setAiGeneratedSettings] = useState<StipendSettings | null>(null);
-
-
   useEffect(() => {
     const loadSavedData = async () => {
       if (!kollelDetails.id) {
@@ -69,11 +64,6 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
 
     loadSavedData();
     
-    // Initialize AI settings state from the current kollel details
-    // This will run when the component mounts and when kollelDetails is updated after a save.
-    setAiPrompt(kollelDetails.settings.lastAiPrompt || '');
-    setAiGeneratedSettings(kollelDetails.settings);
-
     // Reset view state when kollel changes
     setView('CHOICE');
     setStipendResults(null);
@@ -310,14 +300,8 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
         onUpdateSettings(newSettings);
         alert('ההגדרות נשמרו בהצלחה!');
         setView('CHOICE');
-        // State is no longer cleared here. It will be updated via props and useEffect.
       }}
       onBack={resetToChoice}
-      // Pass state down to persist it
-      prompt={aiPrompt}
-      setPrompt={setAiPrompt}
-      generatedSettings={aiGeneratedSettings}
-      setGeneratedSettings={setAiGeneratedSettings}
     />
   );
 

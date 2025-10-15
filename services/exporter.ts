@@ -73,11 +73,14 @@ export const exportDetailsToCsv = (result: StipendResult) => {
   }
 
   const headers = ['תאריך', 'זמן / סטטוס', 'שעות (עשרוני)'];
-  const rows = result.details.map(d => [
-    d.day,
-    d.rawTime,
-    d.hours.toFixed(2),
-  ]);
+  const rows = result.details.map(d => {
+    const dailyTotalHours = Object.values(d.sederHours).reduce((sum, h) => sum + h, 0);
+    return [
+        d.day,
+        d.rawTime,
+        dailyTotalHours.toFixed(2),
+    ];
+  });
 
   const csvContent = createCsvContent(headers, rows);
   const date = new Date().toLocaleDateString('he-IL').replace(/\./g, '-');

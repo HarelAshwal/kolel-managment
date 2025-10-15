@@ -13,14 +13,46 @@ type AppState = 'SELECT_KOLLEL' | 'SETUP_KOLLEL' | 'DASHBOARD';
 
 const defaultSettings: StipendSettings = {
   baseStipend: 2000,
-  deductionPerHour: 25,
-  dailyHoursTarget: 7,
-  sederA_start: '09:00',
-  sederA_end: '13:00',
-  sederB_start: '16:00',
-  sederB_end: '19:00',
-  testBonus: 0,
-  summaryBonus: 0,
+  deductions: {
+    highRate: 25,
+    lowRate: 20,
+    attendanceThresholdPercent: 90,
+  },
+  sedarim: [
+    {
+      id: 1,
+      name: "סדר א'",
+      startTime: '09:00',
+      endTime: '13:00',
+      punctualityBonusEnabled: true,
+      punctualityLateThresholdMinutes: 10,
+      punctualityBonusAmount: 50,
+      punctualityBonusCancellationThreshold: 4,
+      partialStipendPercentage: 55,
+      useCustomDeductions: false,
+      deductions: { highRate: 25, lowRate: 20, attendanceThresholdPercent: 90 },
+    },
+    {
+      id: 2,
+      name: "סדר ב'",
+      startTime: '16:00',
+      endTime: '19:00',
+      punctualityBonusEnabled: true,
+      punctualityLateThresholdMinutes: 10,
+      punctualityBonusAmount: 50,
+      punctualityBonusCancellationThreshold: 4,
+      partialStipendPercentage: 45,
+      useCustomDeductions: false,
+      deductions: { highRate: 25, lowRate: 20, attendanceThresholdPercent: 90 },
+    },
+  ],
+  generalBonuses: [
+    { id: 1, name: 'בונוס מבחן', amount: 100, bonusType: 'count', subjectToAttendanceThreshold: true },
+    { id: 2, name: 'בונוס סיכום', amount: 50, bonusType: 'count', subjectToAttendanceThreshold: true },
+    { id: 3, name: 'כולל שישי', amount: 100, bonusType: 'count', subjectToAttendanceThreshold: false },
+  ],
+  bonusAttendanceThresholdPercent: 80,
+  rounding: 'upTo10',
   lastAiPrompt: 'מלגה חודשית של 2000 שקלים. על כל שעת חיסור מתחת ל-7 שעות ביום, יש להוריד 25 שקלים.',
 };
 
@@ -118,7 +150,6 @@ const AppContent: React.FC = () => {
         ));
 
         // If the edited kollel is the selected one, update it
-        // Fix: Corrected typo from `selectedKolel` to `selectedKollel`.
         if (selectedKollel && selectedKollel.id === editingKollel.id) {
           setSelectedKollel(updatedKollel);
         }

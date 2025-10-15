@@ -1,264 +1,288 @@
-import type { StipendResult, DailyDetail, KollelDetails, ParseResult } from '../types';
+import type { StipendResult, DailyDetail, KollelDetails, ParseResult, StipendSettings, Seder } from '../types';
 
-/**
- * Converts a time string like "HH:mm" or "*HH:mm" to a decimal number of hours.
- * Returns 0 if format is invalid.
- * @param timeStr The time string to convert.
- * @returns Total hours as a decimal.
- */
 const timeStringToDecimalHours = (timeStr: string): number => {
     if (!timeStr) return 0;
-    const cleanedTimeStr = timeStr.trim().replace('*', ''); // Clean the '*'
-    if (!/^\d{1,3}:\d{2}$/.test(cleanedTimeStr)) {
-        return 0;
-    }
+    const cleanedTimeStr = timeStr.trim().replace('*', '');
+    if (!/^\d{1,3}:\d{2}$/.test(cleanedTimeStr)) return 0;
     const [hours, minutes] = cleanedTimeStr.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes)) {
-        return 0;
-    }
+    if (isNaN(hours) || isNaN(minutes)) return 0;
     return hours + minutes / 60;
 };
 
-/**
- * Processes a single sheet from the XLSX file, corresponding to one scholar.
- * It now parses multiple entry/exit pairs per day and considers Seder times.
- * @param rows An array of arrays representing the sheet.
- * @param sheetName The name of the sheet, which is the scholar's name.
- * @param sedarim An array of Seder time ranges.
- * @returns An object with the scholar's name, attendance details, and the month/year.
- */
+const timeToDecimal = (timeStr: string): number => {
+    if (!/^\d{1,2}:\d{2}$/.test(timeStr)) return NaN;
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours + minutes / 60;
+};
+
 const processSingleScholarSheet = (
     rows: (string|number)[][], 
     sheetName: string,
-    sedarim: { start: number, end: number }[]
-): { name: string; details: DailyDetail[]; monthYear: string } => {
+    settings: StipendSettings
+): { name: string; details: DailyDetail[]; monthYear: string; bonusData: { [key: string]: number } } => {
     const name = sheetName;
     let monthYear = '';
     const details: DailyDetail[] = [];
     const monthYearRegex = /(\d{2}\/\d{2,4})/;
 
-    // 1. Find month/year from top rows
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 5 && i < rows.length; i++) {
         if (rows[i]) {
             for (const cell of rows[i]) {
                 const match = String(cell).match(monthYearRegex);
                 if (match && match[1]) {
-                    let capturedDate = match[1];
-                    const dateParts = capturedDate.split('/');
-                    if (dateParts.length === 2 && dateParts[1].length === 2) {
-                        monthYear = `${dateParts[0]}/20${dateParts[1]}`;
-                    } else {
-                        monthYear = capturedDate;
-                    }
+                    monthYear = match[1].length === 5 ? `${match[1].slice(0, 3)}20${match[1].slice(3)}` : match[1];
                     break;
                 }
             }
         }
         if (monthYear) break;
     }
-    if (!monthYear) {
-        throw new Error(`לא ניתן היה למצוא את חודש ושנת הדוח עבור ${name}.`);
-    }
-    
-    // 2. Find header row and column indices
-    let headerRowIndex = -1;
-    let dayColIndex = -1;
-    const entryExitPairs: { entry: number; exit: number }[] = [];
+    if (!monthYear) throw new Error(`לא ניתן היה למצוא את חודש ושנת הדוח עבור ${name}.`);
 
-    for (let i = 0; i < 15; i++) {
-        const row = rows[i];
-        if (row && row.some(c => String(c).trim() === 'יום') && row.some(c => String(c).trim() === 'כניסה')) {
-            headerRowIndex = i;
-            break;
-        }
-    }
-
-    if (headerRowIndex === -1) {
-        throw new Error(`לא ניתן היה למצוא את שורת הכותרות עם "יום" ו"כניסה" עבור ${name}.`);
-    }
+    let headerRowIndex = rows.findIndex(row => row && row.some(c => String(c).trim() === 'יום') && row.some(c => String(c).trim() === 'כניסה'));
+    if (headerRowIndex === -1) throw new Error(`לא ניתן היה למצוא את שורת הכותרות עבור ${name}.`);
 
     const headerRow = rows[headerRowIndex];
-    dayColIndex = headerRow.findIndex(cell => String(cell).trim() === 'יום');
+    const dayColIndex = headerRow.findIndex(cell => String(cell).trim() === 'יום');
+    
+    const bonusColIndices: { [key: string]: number } = {};
+    const bonusData: { [key: string]: number } = {};
+    (settings.generalBonuses || []).forEach(b => {
+        const colIndex = headerRow.findIndex(cell => String(cell).trim().includes(b.name.split(' ')[1] || b.name)); // Simple matching
+        if(colIndex > -1) bonusColIndices[b.name] = colIndex;
+        bonusData[b.name] = 0;
+    });
 
     const entryIndices = headerRow.map((c, i) => String(c).trim() === 'כניסה' ? i : -1).filter(i => i !== -1);
     const exitIndices = headerRow.map((c, i) => String(c).trim() === 'יציאה' ? i : -1).filter(i => i !== -1);
-    const usedExitIndices = new Set<number>();
-
-    entryIndices.forEach(entryIndex => {
-        let bestExitIndex = -1;
-        let minDistance = Infinity;
-        exitIndices.forEach(exitIndex => {
-            if (!usedExitIndices.has(exitIndex) && exitIndex > entryIndex) {
-                const distance = exitIndex - entryIndex;
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    bestExitIndex = exitIndex;
-                }
-            }
-        });
-        if (bestExitIndex !== -1) {
-            entryExitPairs.push({ entry: entryIndex, exit: bestExitIndex });
-            usedExitIndices.add(bestExitIndex);
-        }
-    });
-    entryExitPairs.sort((a, b) => a.entry - b.entry);
-
-    if (dayColIndex === -1 || entryExitPairs.length === 0) {
-        throw new Error(`לא ניתן היה למצוא את עמודת "יום" או זוגות "כניסה"/"יציאה" עבור ${name}.`);
-    }
     
-    // 3. Find data start row
-    let dataStartRow = -1;
-    for (let i = headerRowIndex + 1; i < rows.length; i++) {
-        if (rows[i] && String(rows[i][dayColIndex]).match(/\d{1,2}\/\d{1,2}/)) {
-            dataStartRow = i;
-            break;
-        }
-    }
-    if (dataStartRow === -1) {
-        throw new Error(`לא ניתן היה למצוא את שורת הנתונים הראשונה עבור ${name}.`);
-    }
-
-    // 4. Extract daily data
+    let dataStartRow = rows.findIndex((row, i) => i > headerRowIndex && row && String(row[dayColIndex]).match(/\d{1,2}\/\d{1,2}/));
+    if (dataStartRow === -1) throw new Error(`לא ניתן היה למצוא נתוני נוכחות עבור ${name}.`);
+    
+    const sedarimConfig = (settings.sedarim || []).map(s => ({
+        ...s,
+        startDecimal: timeToDecimal(s.startTime),
+        endDecimal: timeToDecimal(s.endTime)
+    }));
+    
     for (let i = dataStartRow; i < rows.length; i++) {
         const row = rows[i];
-        if (!row || !row[dayColIndex] || String(row[dayColIndex]).trim().startsWith('--') || String(row[dayColIndex]).trim() === 'סה"כ') {
-            continue;
-        }
+        if (!row || !row[dayColIndex] || String(row[dayColIndex]).trim().startsWith('--') || String(row[dayColIndex]).trim() === 'סה"כ') continue;
+
+        Object.keys(bonusColIndices).forEach(bonusName => {
+            const colIndex = bonusColIndices[bonusName];
+            const cellValue = row[colIndex];
+            const numValue = Number(cellValue);
+            if (!isNaN(numValue) && numValue > 0) {
+                bonusData[bonusName] += numValue;
+            }
+        });
 
         const dayAndDateStr = String(row[dayColIndex] || '').trim();
-        const isDayOff = Object.values(row).some(cell => String(cell).trim() === 'חופש');
+        const dailyDetail: DailyDetail = {
+            day: dayAndDateStr,
+            sederHours: {},
+            rawTime: '',
+            isLateSederA: false,
+            isLateSederB: false,
+        };
 
-        if (isDayOff) {
-            details.push({ day: dayAndDateStr, hours: 0, rawTime: 'חופש' });
+        if (Object.values(row).some(cell => String(cell).trim() === 'חופש')) {
+            dailyDetail.rawTime = 'חופש';
+            details.push(dailyDetail);
             continue;
         }
         
-        let dailyTotalHours = 0;
-        let dailyOutOfSederHours = 0;
         const rawTimeParts: string[] = [];
 
-        for (const pair of entryExitPairs) {
-            const entryTimeStr = String(row[pair.entry] || '').trim();
-            const exitTimeStr = String(row[pair.exit] || '').trim();
+        for(let sederIndex = 0; sederIndex < sedarimConfig.length; sederIndex++) {
+            if(sederIndex >= entryIndices.length) break;
 
-            if (entryTimeStr && exitTimeStr && entryTimeStr !== '-' && exitTimeStr !== '') {
-                const entryHours = timeStringToDecimalHours(entryTimeStr);
-                const exitHours = timeStringToDecimalHours(exitTimeStr);
-
-                if (exitHours > entryHours) {
-                    const originalDuration = exitHours - entryHours;
-                    let validDuration = 0;
-                    
-                    for (const seder of sedarim) {
-                        const intersectionStart = Math.max(entryHours, seder.start);
-                        const intersectionEnd = Math.min(exitHours, seder.end);
-                        if (intersectionEnd > intersectionStart) {
-                            validDuration += (intersectionEnd - intersectionStart);
-                        }
-                    }
-                    dailyTotalHours += validDuration;
-                    dailyOutOfSederHours += (originalDuration - validDuration);
-                    rawTimeParts.push(`${entryTimeStr}-${exitTimeStr}`);
+            const seder = sedarimConfig[sederIndex];
+            const entryTime = timeStringToDecimalHours(String(row[entryIndices[sederIndex]] || ''));
+            const exitTime = timeStringToDecimalHours(String(row[exitIndices[sederIndex]] || ''));
+            
+            if (exitTime > entryTime) {
+                if(entryTime > seder.startDecimal + (seder.punctualityLateThresholdMinutes / 60)) {
+                    if (seder.name.includes("א'")) dailyDetail.isLateSederA = true;
+                    if (seder.name.includes("ב'")) dailyDetail.isLateSederB = true;
                 }
+                const validDuration = Math.max(0, Math.min(exitTime, seder.endDecimal) - Math.max(entryTime, seder.startDecimal));
+                dailyDetail.sederHours[seder.id] = validDuration;
+                rawTimeParts.push(`${String(row[entryIndices[sederIndex]] || '')}-${String(row[exitIndices[sederIndex]] || '')}`);
             }
         }
         
-        if (dayAndDateStr) {
-            details.push({ 
-                day: dayAndDateStr, 
-                hours: dailyTotalHours, 
-                rawTime: dailyTotalHours + dailyOutOfSederHours > 0 ? rawTimeParts.join(' | ') : '-',
-                outOfSederHours: dailyOutOfSederHours > 0.01 ? dailyOutOfSederHours : undefined,
-            });
-        }
+        dailyDetail.rawTime = rawTimeParts.join(' | ') || '-';
+        details.push(dailyDetail);
     }
     
-    return { name, details, monthYear };
+    return { name, details, monthYear, bonusData };
 };
 
-
-/**
- * Parses a multi-sheet XLSX ArrayBuffer where each sheet is a scholar's report,
- * calculates study hours, and computes stipends.
- * @param xlsxBuffer The raw ArrayBuffer of the XLSX file.
- * @param kollelDetails The full kollel details including settings.
- * @returns A ParseResult object.
- */
 export const parseXlsxAndCalculateStipends = (xlsxBuffer: ArrayBuffer, kollelDetails: KollelDetails): ParseResult => {
     const XLSX = (window as any).XLSX;
-    if (!XLSX) {
-        throw new Error('ספריית עיבוד קבצי האקסל (XLSX) לא נטענה. אנא בדוק את חיבור האינטרנט שלך, נסה לרענן את הדף, או השבת חוסמי פרסומות שעלולים להפריע.');
-    }
+    if (!XLSX) throw new Error('ספריית עיבוד קבצי האקסל (XLSX) לא נטענה.');
 
     const workbook = XLSX.read(xlsxBuffer, { type: 'array' });
-    const sheetNames = workbook.SheetNames;
-
-    if (!sheetNames || sheetNames.length === 0) {
-        throw new Error('קובץ ה-XLSX לא מכיל גיליונות.');
-    }
-
-    const { settings } = kollelDetails;
-    const timeToDecimal = (timeStr: string): number => {
-        if (!/^\d{1,2}:\d{2}$/.test(timeStr)) return NaN;
-        const [hours, minutes] = timeStr.split(':').map(Number);
-        return hours + minutes / 60;
-    };
-    const sedarim = [
-        { start: timeToDecimal(settings.sederA_start), end: timeToDecimal(settings.sederA_end) },
-        { start: timeToDecimal(settings.sederB_start), end: timeToDecimal(settings.sederB_end) }
-    ].filter(s => !isNaN(s.start) && !isNaN(s.end) && s.end > s.start);
-
     const allResults: StipendResult[] = [];
     let commonMonthYear: string | null = null;
+    
+    const settings = ensureSettingsCompatibility(kollelDetails.settings);
 
-    for (const sheetName of sheetNames) {
+    for (const sheetName of workbook.SheetNames) {
         const worksheet = workbook.Sheets[sheetName];
         if (!worksheet) continue;
-
         const rows: (string|number)[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: '' });
-
         if (rows.length < 10) continue;
 
         try {
-            const scholarData = processSingleScholarSheet(rows, sheetName, sedarim);
+            const { name, details, monthYear, bonusData } = processSingleScholarSheet(rows, sheetName, settings);
+            if (!commonMonthYear) commonMonthYear = monthYear;
             
-            if (!commonMonthYear && scholarData.monthYear) {
-                commonMonthYear = scholarData.monthYear;
-            } else if (scholarData.monthYear && commonMonthYear !== scholarData.monthYear) {
-                console.warn(`חודש לא תואם בגיליון "${sheetName}". מצופה ${commonMonthYear}, נמצא ${scholarData.monthYear}.`);
-            }
-            
-            const totalValidHours = scholarData.details.reduce((sum, d) => sum + d.hours, 0);
-            const totalOutOfSederHours = scholarData.details.reduce((sum, d) => sum + (d.outOfSederHours || 0), 0);
-            const activeDays = scholarData.details.filter(d => d.hours > 0).length;
-            const requiredHours = activeDays * settings.dailyHoursTarget;
-            const hourDeficit = Math.max(0, requiredHours - totalValidHours);
-            const totalDeduction = hourDeficit * settings.deductionPerHour;
-            const finalStipend = settings.baseStipend - totalDeduction;
-
-            allResults.push({
-                name: scholarData.name,
-                totalHours: totalValidHours,
-                stipend: Math.max(0, finalStipend),
-                details: scholarData.details,
-                totalOutOfSederHours,
+            // --- Partial Stipend Calculation ---
+            const attendedSederIds = new Set<number>();
+            details.forEach(d => {
+                Object.keys(d.sederHours).forEach(sederId => {
+                     if(d.sederHours[Number(sederId)] > 0) attendedSederIds.add(Number(sederId));
+                });
             });
 
+            let baseStipend = settings.baseStipend;
+            if (attendedSederIds.size === 1) {
+                const singleSederId = attendedSederIds.values().next().value;
+                const singleSeder = settings.sedarim.find(s => s.id === singleSederId);
+                if (singleSeder && singleSeder.partialStipendPercentage > 0) {
+                    baseStipend *= (singleSeder.partialStipendPercentage / 100);
+                }
+            }
+            
+            // --- Per-Seder Deduction Calculation ---
+            let totalDeduction = 0;
+            let totalValidHours = 0;
+            let totalRequiredHours = 0;
+            const deductionDetails: StipendResult['deductionDetails'] = [];
+
+            for (const seder of settings.sedarim) {
+                const rules = seder.useCustomDeductions ? seder.deductions : settings.deductions;
+                const sederDuration = timeToDecimal(seder.endTime) - timeToDecimal(seder.startTime);
+
+                const sederTotalHours = details.reduce((sum, d) => sum + (d.sederHours[seder.id] || 0), 0);
+                const sederActiveDays = details.filter(d => (d.sederHours[seder.id] || 0) > 0).length;
+
+                if (sederActiveDays === 0) continue; // Skip if never attended this seder
+
+                const sederRequiredHours = sederActiveDays * sederDuration;
+                const sederAttendancePercentage = sederRequiredHours > 0 ? (sederTotalHours / sederRequiredHours) * 100 : 100;
+                const sederHourDeficit = Math.max(0, sederRequiredHours - sederTotalHours);
+                
+                const deductionRate = sederAttendancePercentage >= rules.attendanceThresholdPercent ? rules.lowRate : rules.highRate;
+                const sederDeduction = sederHourDeficit * deductionRate;
+
+                totalDeduction += sederDeduction;
+                totalValidHours += sederTotalHours;
+                totalRequiredHours += sederRequiredHours;
+
+                deductionDetails.push({ sederName: seder.name, deficit: sederHourDeficit, rate: deductionRate, total: sederDeduction });
+            }
+
+            const overallAttendancePercentage = totalRequiredHours > 0 ? (totalValidHours / totalRequiredHours) * 100 : 100;
+            
+            // --- Bonus Calculation ---
+            let totalBonus = 0;
+            const bonusDetails: { name: string; count: number; totalAmount: number }[] = [];
+            
+            (settings.sedarim || []).forEach(seder => {
+                if (!seder.punctualityBonusEnabled) return;
+                const isSederA = seder.name.includes("א'");
+                const lateCount = details.filter(d => (isSederA ? d.isLateSederA : d.isLateSederB)).length;
+                if (lateCount >= seder.punctualityBonusCancellationThreshold) return;
+                
+                const onTimeCount = details.filter(d => (d.sederHours[seder.id] || 0) > 0 && !(isSederA ? d.isLateSederA : d.isLateSederB)).length;
+                const bonusAmount = onTimeCount * seder.punctualityBonusAmount;
+                if (bonusAmount > 0) {
+                    totalBonus += bonusAmount;
+                    bonusDetails.push({ name: `שמירת ${seder.name}`, count: onTimeCount, totalAmount: bonusAmount });
+                }
+            });
+
+            (settings.generalBonuses || []).forEach(bonusDef => {
+                if (bonusDef.subjectToAttendanceThreshold && overallAttendancePercentage < settings.bonusAttendanceThresholdPercent) return;
+                
+                const countOrAmount = bonusData[bonusDef.name] || 0;
+                if (countOrAmount <= 0) return;
+
+                const bonusAmount = bonusDef.bonusType === 'count' ? countOrAmount * bonusDef.amount : countOrAmount;
+                totalBonus += bonusAmount;
+                bonusDetails.push({ name: bonusDef.name, count: bonusDef.bonusType === 'count' ? countOrAmount : 1, totalAmount: bonusAmount });
+            });
+            
+            // --- Final Calculation ---
+            let finalStipend = baseStipend - totalDeduction + totalBonus;
+            if (settings.rounding === 'upTo10') {
+                finalStipend = Math.ceil(finalStipend / 10) * 10;
+            }
+
+            allResults.push({
+                name,
+                totalHours: totalValidHours,
+                stipend: Math.max(0, finalStipend),
+                details,
+                bonusDetails,
+                attendancePercentage: overallAttendancePercentage,
+                baseStipendUsed: baseStipend,
+                totalDeduction,
+                hourDeficit: totalRequiredHours - totalValidHours,
+                requiredHours: totalRequiredHours,
+                deductionDetails,
+            });
         } catch (e) {
-            console.warn(`שגיאה בעיבוד גיליון "${sheetName}": ${(e as Error).message}. מדלג על גיליון זה.`);
+            console.warn(`שגיאה בעיבוד גיליון "${sheetName}": ${(e as Error).message}.`);
         }
     }
     
-    if (allResults.length === 0) {
-        throw new Error('לא נמצאו נתוני אברכים תקינים בקובץ. ודא שהקובץ בפורמט הנכון וכל גיליון מכיל שם אברך ונתוני נוכחות.');
-    }
-
-    if (!commonMonthYear) {
-        throw new Error('לא ניתן היה לקבוע את חודש הדוח מאף אחד מהגיליונות.');
-    }
+    if (allResults.length === 0) throw new Error('לא נמצאו נתוני אברכים תקינים בקובץ.');
+    if (!commonMonthYear) throw new Error('לא ניתן היה לקבוע את חודש הדוח.');
 
     allResults.sort((a, b) => a.name.localeCompare(b.name, 'he'));
-
     return { monthYear: commonMonthYear, results: allResults };
+};
+
+// Helper to migrate old settings structure to new one
+const ensureSettingsCompatibility = (settings: StipendSettings): StipendSettings => {
+    let compatible: StipendSettings = JSON.parse(JSON.stringify(settings));
+
+    if (!compatible.deductions) {
+        compatible.deductions = {
+            highRate: settings.deductionPerHour || 25,
+            lowRate: (settings.deductionPerHour || 25) * 0.8,
+            attendanceThresholdPercent: 90,
+        };
+        delete compatible.deductionPerHour;
+    }
+    
+    // Migrate singleSederSettings to per-seder partialStipendPercentage
+    if (compatible.singleSederSettings) {
+        if (compatible.sedarim && compatible.sedarim.length > 0) {
+            compatible.sedarim[0].partialStipendPercentage = compatible.singleSederSettings.sederAPercentage;
+        }
+        if (compatible.sedarim && compatible.sedarim.length > 1) {
+            compatible.sedarim[1].partialStipendPercentage = compatible.singleSederSettings.sederBPercentage;
+        }
+        delete compatible.singleSederSettings;
+    }
+
+    compatible.sedarim = (compatible.sedarim || []).map((s: Seder) => ({
+        ...s,
+        punctualityBonusCancellationThreshold: s.punctualityBonusCancellationThreshold || 4,
+        partialStipendPercentage: s.partialStipendPercentage || 0,
+        useCustomDeductions: s.useCustomDeductions || false,
+        deductions: s.deductions || { highRate: 25, lowRate: 20, attendanceThresholdPercent: 90 },
+    }));
+
+    compatible.generalBonuses = (compatible.generalBonuses || []).map(b => ({ ...b, bonusType: b.bonusType || 'count', subjectToAttendanceThreshold: b.subjectToAttendanceThreshold || false }));
+    compatible.bonusAttendanceThresholdPercent = compatible.bonusAttendanceThresholdPercent || 80;
+    compatible.rounding = compatible.rounding || 'none';
+    
+    return compatible;
 };

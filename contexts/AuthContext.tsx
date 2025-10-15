@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import type { AuthContextType, User } from '../types/auth';
+import type { AuthContextType, User } from '../types';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -35,6 +35,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     // SERVER-SIDE ADMIN CHECK - Secure
     const checkAdminStatus = async (authToken: string): Promise<boolean> => {
+        if (isStudioEnv()) {
+            console.log("Auth: Bypassing admin check for Studio environment.");
+            const storedUser = localStorage.getItem('userData');
+            if (storedUser) {
+                try {
+                    const user: User = JSON.parse(storedUser);
+                    return !!user.isAdmin;
+                } catch (e) {
+                    console.error('Failed to parse user data for admin check', e);
+                    return false;
+                }
+            }
+            return false;
+        }
+
         try {
             const response = await fetch('/api/auth/check-admin', {
                 headers: {
@@ -47,6 +62,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 const data = await response.json();
                 console.log('Server admin check:', data.isSuperAdmin, 'for email:', data.email);
                 return data.isSuperAdmin;
+            }
+            if (response.status === 404) {
+                 console.warn(`Admin check endpoint not found (${response.status} ${response.statusText}). Assuming not a super admin.`);
+                 return false;
             }
             console.error('Admin check failed:', response.status, response.statusText);
             return false;
@@ -133,11 +152,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             };
             const mockToken = 'mock-auth-token-for-studio';
 
+            // Set isSuperAdmin immediately for mock user based on isAdmin flag
+            const userWithAdminFlag = {
+                ...mockUser,
+                isSuperAdmin: mockUser.isAdmin,
+            };
+
             localStorage.setItem('authToken', mockToken);
-            localStorage.setItem('userData', JSON.stringify(mockUser));
+            localStorage.setItem('userData', JSON.stringify(userWithAdminFlag));
 
             setToken(mockToken);
-            setUser(mockUser);
+            setUser(userWithAdminFlag);
             setIsAuthenticated(true);
         } else {
             // In a real environment with a backend, redirect for Google OAuth.
