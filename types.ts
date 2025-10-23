@@ -42,6 +42,12 @@ export interface StipendSettings {
 
   lastAiPrompt?: string;
 
+  scholarOverrides?: {
+    [scholarName: string]: {
+      assignedSedarim?: number[];
+    };
+  };
+
   // Deprecated fields for migration
   singleSederSettings?: {
     enabled: boolean;
@@ -89,6 +95,8 @@ export interface DailyDetail {
   outOfSederHours?: number;
   isLateSederA?: boolean; // Kept for punctuality bonus logic
   isLateSederB?: boolean; // Kept for punctuality bonus logic
+  isAbsenceApproved?: { [sederId: number]: boolean };
+  isLatenessApproved?: { [sederId: number]: boolean };
 }
 
 export interface StipendResult {
@@ -112,6 +120,9 @@ export interface StipendResult {
     rate: number;
     total: number;
   }[];
+  workingDaysInMonth?: number;
+  totalApprovedAbsenceHours?: number;
+  totalApprovedLatenessCount?: number;
 }
 
 export interface ParseResult {

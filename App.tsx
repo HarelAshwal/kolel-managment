@@ -12,11 +12,11 @@ import { getKollels, getAllKollelsForAdmin, addKollel, updateKollel, deleteKolle
 type AppState = 'SELECT_KOLLEL' | 'SETUP_KOLLEL' | 'DASHBOARD';
 
 const defaultSettings: StipendSettings = {
-  baseStipend: 2000,
+  baseStipend: 1400,
   deductions: {
-    highRate: 25,
-    lowRate: 20,
-    attendanceThresholdPercent: 90,
+    highRate: 12,
+    lowRate: 6,
+    attendanceThresholdPercent: 50,
   },
   sedarim: [
     {
@@ -26,34 +26,35 @@ const defaultSettings: StipendSettings = {
       endTime: '13:00',
       punctualityBonusEnabled: true,
       punctualityLateThresholdMinutes: 10,
-      punctualityBonusAmount: 50,
-      punctualityBonusCancellationThreshold: 4,
+      punctualityBonusAmount: 20,
+      punctualityBonusCancellationThreshold: 7,
       partialStipendPercentage: 55,
       useCustomDeductions: false,
-      deductions: { highRate: 25, lowRate: 20, attendanceThresholdPercent: 90 },
+      deductions: { highRate: 12, lowRate: 6, attendanceThresholdPercent: 50 },
     },
     {
       id: 2,
       name: "סדר ב'",
       startTime: '16:00',
-      endTime: '19:00',
+      endTime: '19:15',
       punctualityBonusEnabled: true,
       punctualityLateThresholdMinutes: 10,
-      punctualityBonusAmount: 50,
-      punctualityBonusCancellationThreshold: 4,
+      punctualityBonusAmount: 12.5,
+      punctualityBonusCancellationThreshold: 7,
       partialStipendPercentage: 45,
       useCustomDeductions: false,
-      deductions: { highRate: 25, lowRate: 20, attendanceThresholdPercent: 90 },
+      deductions: { highRate: 12, lowRate: 6, attendanceThresholdPercent: 50 },
     },
   ],
   generalBonuses: [
     { id: 1, name: 'בונוס מבחן', amount: 100, bonusType: 'count', subjectToAttendanceThreshold: true },
     { id: 2, name: 'בונוס סיכום', amount: 50, bonusType: 'count', subjectToAttendanceThreshold: true },
-    { id: 3, name: 'כולל שישי', amount: 100, bonusType: 'count', subjectToAttendanceThreshold: false },
+    { id: 3, name: 'כולל שישי', amount: 50, bonusType: 'count', subjectToAttendanceThreshold: false },
   ],
   bonusAttendanceThresholdPercent: 80,
   rounding: 'upTo10',
-  lastAiPrompt: 'מלגה חודשית של 2000 שקלים. על כל שעת חיסור מתחת ל-7 שעות ביום, יש להוריד 25 שקלים.',
+  lastAiPrompt: 'מלגה חודשית של 1400 שקלים. על כל שעת חיסור מתחת ל-50% נוכחות, יש להוריד 12 שקלים, ומעל 50% נוכחות 6 שקלים. סדר בוקר 09:00-13:00 וסדר צהריים 16:00-19:15. יש בונוס שמירת סדרים.',
+  scholarOverrides: {},
 };
 
 const AppContent: React.FC = () => {

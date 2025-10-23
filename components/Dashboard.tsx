@@ -184,6 +184,13 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
     setFileName('');
   };
 
+  const handleUpdateScholarResult = (updatedResult: StipendResult) => {
+    setStipendResults(prevResults => {
+      if (!prevResults) return null;
+      return prevResults.map(r => r.name === updatedResult.name ? updatedResult : r);
+    });
+  };
+
   const isCurrentMonthSaved = monthYear ? savedData.some(d => d.monthYear === monthYear) : false;
 
   const renderChoiceView = () => {
@@ -289,7 +296,13 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
           </button>
         </div>
       </div>
-      {stipendResults && monthYear && <AttendanceTable results={stipendResults} kollelDetails={kollelDetails} monthYear={monthYear} />}
+      {stipendResults && monthYear && <AttendanceTable 
+          results={stipendResults} 
+          kollelDetails={kollelDetails} 
+          monthYear={monthYear}
+          onUpdateScholarResult={handleUpdateScholarResult}
+          onUpdateSettings={onUpdateSettings}
+      />}
     </div>
   );
 

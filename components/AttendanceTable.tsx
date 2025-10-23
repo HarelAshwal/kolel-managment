@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { StipendResult, KollelDetails } from '../types';
+import type { StipendResult, KollelDetails, StipendSettings } from '../types';
 import StipendDetailModal from './StipendDetailModal';
 import { InfoIcon } from './icons/InfoIcon';
 
@@ -7,14 +7,18 @@ interface AttendanceTableProps {
   results: StipendResult[];
   kollelDetails: KollelDetails;
   monthYear: string | null;
+  onUpdateScholarResult: (updatedResult: StipendResult) => void;
+  onUpdateSettings: (settings: StipendSettings) => void;
 }
 
-const AttendanceTable: React.FC<AttendanceTableProps> = ({ results, kollelDetails, monthYear }) => {
+const AttendanceTable: React.FC<AttendanceTableProps> = ({ results, kollelDetails, monthYear, onUpdateScholarResult, onUpdateSettings }) => {
   const totalStipend = results.reduce((sum, result) => sum + result.stipend, 0);
-  const [selectedScholar, setSelectedScholar] = useState<StipendResult | null>(null);
+  const [selectedScholarName, setSelectedScholarName] = useState<string | null>(null);
+
+  const selectedScholar = selectedScholarName ? results.find(r => r.name === selectedScholarName) : null;
 
   const handleRowClick = (result: StipendResult) => {
-    setSelectedScholar(result);
+    setSelectedScholarName(result.name);
   };
   
   return (
@@ -75,10 +79,12 @@ const AttendanceTable: React.FC<AttendanceTableProps> = ({ results, kollelDetail
       </div>
       <StipendDetailModal 
         isOpen={!!selectedScholar}
-        onClose={() => setSelectedScholar(null)}
+        onClose={() => setSelectedScholarName(null)}
         result={selectedScholar}
         kollelDetails={kollelDetails}
         monthYear={monthYear}
+        onUpdateScholarResult={onUpdateScholarResult}
+        onUpdateSettings={onUpdateSettings}
       />
     </>
   );

@@ -5,6 +5,7 @@ import { SparklesIcon } from './icons/SparklesIcon';
 import { generateStipendSettingsFromPrompt } from '../services/api';
 import { PlusIcon } from './icons/PlusIcon';
 import { TrashIcon } from './icons/TrashIcon';
+import { InfoIcon } from './icons/InfoIcon';
 
 const ensureSettingsCompatibility = (settings: StipendSettings): StipendSettings => {
     let compatible: StipendSettings = JSON.parse(JSON.stringify(settings));
@@ -179,15 +180,30 @@ const StipendSettingsComponent: React.FC<StipendSettingsProps> = ({
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t">
             <div>
-                <label className="block text-sm font-medium">ניכוי גבוה (ש"ח לשעה)</label>
+                <label className="flex items-center gap-1 text-sm font-medium">
+                    <span>ניכוי גבוה (ש"ח לשעה)</span>
+                    <span title="הסכום שיורד על כל שעת חיסור כאשר הנוכחות הכללית של האברך נמוכה מהסף שנקבע.">
+                        <InfoIcon className="w-4 h-4 text-slate-400 cursor-help" />
+                    </span>
+                </label>
                 <input type="number" value={settings.deductions.highRate} onChange={e => handleNestedChange('deductions', 'highRate', e.target.value)} className="mt-1 w-full p-2 border rounded-md" />
             </div>
             <div>
-                <label className="block text-sm font-medium">ניכוי נמוך (ש"ח לשעה)</label>
+                <label className="flex items-center gap-1 text-sm font-medium">
+                    <span>ניכוי נמוך (ש"ח לשעה)</span>
+                     <span title="הסכום שיורד על כל שעת חיסור כאשר הנוכחות הכללית של האברך גבוהה או שווה לסף שנקבע.">
+                        <InfoIcon className="w-4 h-4 text-slate-400 cursor-help" />
+                    </span>
+                </label>
                 <input type="number" value={settings.deductions.lowRate} onChange={e => handleNestedChange('deductions', 'lowRate', e.target.value)} className="mt-1 w-full p-2 border rounded-md" />
             </div>
             <div>
-                <label className="block text-sm font-medium">סף נוכחות לניכוי נמוך (%)</label>
+                <label className="flex items-center gap-1 text-sm font-medium">
+                    <span>סף נוכחות לניכוי נמוך (%)</span>
+                     <span title="אחוז הנוכחות הכללי שהאברך צריך לעמוד בו כדי להיות זכאי לניכוי הנמוך. אם נוכחותו נמוכה מסף זה, יחול הניכוי הגבוה.">
+                        <InfoIcon className="w-4 h-4 text-slate-400 cursor-help" />
+                    </span>
+                </label>
                 <input type="number" value={settings.deductions.attendanceThresholdPercent} onChange={e => handleNestedChange('deductions', 'attendanceThresholdPercent', e.target.value)} className="mt-1 w-full p-2 border rounded-md" />
             </div>
         </div>
@@ -225,9 +241,33 @@ const StipendSettingsComponent: React.FC<StipendSettingsProps> = ({
                     <label className="flex items-center gap-2 cursor-pointer text-sm mt-3"><input type="checkbox" checked={seder.useCustomDeductions} onChange={e => handleSederChange(seder.id, 'useCustomDeductions', e.target.checked)} className="h-4 w-4 rounded" />הפעל כללי ניכויים מיוחדים לסדר זה</label>
                     {seder.useCustomDeductions && (
                        <div className="grid grid-cols-3 gap-4 p-3 bg-slate-100 dark:bg-slate-800 rounded-md animate-fade-in mt-2">
-                           <div><label className="block text-xs font-medium">ניכוי גבוה</label><input type="number" value={seder.deductions.highRate} onChange={e => handleSederDeductionChange(seder.id, 'highRate', e.target.value)} className="mt-1 w-full p-2 border rounded-md" /></div>
-                           <div><label className="block text-xs font-medium">ניכוי נמוך</label><input type="number" value={seder.deductions.lowRate} onChange={e => handleSederDeductionChange(seder.id, 'lowRate', e.target.value)} className="mt-1 w-full p-2 border rounded-md" /></div>
-                           <div><label className="block text-xs font-medium">סף (%)</label><input type="number" value={seder.deductions.attendanceThresholdPercent} onChange={e => handleSederDeductionChange(seder.id, 'attendanceThresholdPercent', e.target.value)} className="mt-1 w-full p-2 border rounded-md" /></div>
+                           <div>
+                                <label className="flex items-center gap-1 text-xs font-medium">
+                                    <span>ניכוי גבוה</span>
+                                    <span title="הסכום שיורד על כל שעת חיסור כאשר הנוכחות הכללית של האברך נמוכה מהסף שנקבע.">
+                                        <InfoIcon className="w-3 h-3 text-slate-400 cursor-help" />
+                                    </span>
+                                </label>
+                                <input type="number" value={seder.deductions.highRate} onChange={e => handleSederDeductionChange(seder.id, 'highRate', e.target.value)} className="mt-1 w-full p-2 border rounded-md" />
+                           </div>
+                           <div>
+                                <label className="flex items-center gap-1 text-xs font-medium">
+                                    <span>ניכוי נמוך</span>
+                                    <span title="הסכום שיורד על כל שעת חיסור כאשר הנוכחות הכללית של האברך גבוהה או שווה לסף שנקבע.">
+                                        <InfoIcon className="w-3 h-3 text-slate-400 cursor-help" />
+                                    </span>
+                                </label>
+                                <input type="number" value={seder.deductions.lowRate} onChange={e => handleSederDeductionChange(seder.id, 'lowRate', e.target.value)} className="mt-1 w-full p-2 border rounded-md" />
+                           </div>
+                           <div>
+                                <label className="flex items-center gap-1 text-xs font-medium">
+                                    <span>סף (%)</span>
+                                    <span title="אחוז הנוכחות הכללי שהאברך צריך לעמוד בו כדי להיות זכאי לניכוי הנמוך. אם נוכחותו נמוכה מסף זה, יחול הניכוי הגבוה.">
+                                        <InfoIcon className="w-3 h-3 text-slate-400 cursor-help" />
+                                    </span>
+                                </label>
+                                <input type="number" value={seder.deductions.attendanceThresholdPercent} onChange={e => handleSederDeductionChange(seder.id, 'attendanceThresholdPercent', e.target.value)} className="mt-1 w-full p-2 border rounded-md" />
+                           </div>
                        </div>
                     )}
                 </div>
