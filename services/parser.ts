@@ -11,19 +11,25 @@ const timeStringToDecimalHours = (timeStr: string): number => {
 };
 
 const fourDigitTimeToDecimal = (time: string | number): number => {
-    if (typeof time === 'string' && time.trim() === 'מ') {
-        return -1; // Special value for manual/approved
-    }
-    // Handle formatted numbers like "1,100" by removing commas
-    const timeStr = String(time).replace(/,/g, '').trim();
-    if (!/^\d{3,4}$/.test(timeStr)) return 0;
+    // This function will now robustly parse numeric time values, including floats from Excel.
+    // The 'מ' logic is handled in the main processing function which calls this.
+    const timeStr = String(time || '').replace(/,/g, '').trim();
     
-    // Pad to 4 digits to correctly handle times like "900"
-    const paddedTimeStr = timeStr.padStart(4, '0');
+    const parsedNum = parseFloat(timeStr);
+    if (isNaN(parsedNum)) return 0;
+
+    const intNum = Math.floor(parsedNum);
+    const numStr = String(intNum);
+
+    // Allow 1-4 digits, for times like '900' or '0'.
+    if (!/^\d{1,4}$/.test(numStr)) return 0;
+    
+    const paddedTimeStr = numStr.padStart(4, '0');
     const hoursStr = paddedTimeStr.slice(0, -2);
     const minutesStr = paddedTimeStr.slice(-2);
     const hours = parseInt(hoursStr, 10);
     const minutes = parseInt(minutesStr, 10);
+
     if (isNaN(hours) || isNaN(minutes) || hours > 23 || minutes > 59) return 0;
     return hours + minutes / 60;
 };
@@ -246,42 +252,72 @@ const processMultiScholarSheet = (
                 rawTime: '',
                 isLateSederA: false,
                 isLateSederB: false,
+                isAbsenceApproved: {},
+                isLatenessApproved: {},
             };
 
             const rawTimeParts: string[] = [];
+            
+            const formatTime = (val: string | number) => {
+                const cleanStr = String(val || '0').replace('מ', '').trim();
+                const num = parseFloat(cleanStr.replace(/,/g, ''));
+                if (isNaN(num)) return (String(val).trim() === 'מ') ? 'מאושר' : '00:00';
+                const str = String(Math.floor(num));
+                return str.padStart(4, '0').replace(/(\d{2})(\d{2})/, '$1:$2');
+            };
             
             settings.sedarim.forEach(sederConfig => {
                 const sederKey = getSederKeyFromFile(sederConfig.name);
                 if (!sederKey || !data.entries.hasOwnProperty(sederKey)) return;
                 
-                let entryTimeRaw = data.entries[sederKey];
-                let exitTimeRaw = data.exits[sederKey];
+                const entryTimeRaw = data.entries[sederKey];
+                const exitTimeRaw = data.exits[sederKey];
 
-                let entryTime = fourDigitTimeToDecimal(entryTimeRaw);
-                let exitTime = fourDigitTimeToDecimal(exitTimeRaw);
+                const entryStr = String(entryTimeRaw || '').trim();
+                const exitStr = String(exitTimeRaw || '').trim();
+
+                const isEntryApproved = entryStr.includes('מ');
+                const isExitApproved = exitStr.includes('מ');
+
+                let entryNum = entryStr.replace('מ','');
+                let exitNum = exitStr.replace('מ','');
+
+                let entryTime = fourDigitTimeToDecimal(entryNum);
+                let exitTime = fourDigitTimeToDecimal(exitNum);
                 
                 const sederStart = timeToDecimal(sederConfig.startTime);
                 const sederEnd = timeToDecimal(sederConfig.endTime);
 
-                if (entryTime === -1) { // Manual entry 'מ'
+                if (entryStr === 'מ') {
                    entryTime = sederStart;
-                   entryTimeRaw = sederConfig.startTime.replace(':', '');
+                   entryNum = sederConfig.startTime.replace(':','');
                 }
-                if (exitTime === -1) { // Manual exit 'מ'
+                if (exitStr === 'מ') {
                    exitTime = sederEnd;
-                   exitTimeRaw = sederConfig.endTime.replace(':', '');
+                   exitNum = sederConfig.endTime.replace(':','');
                 }
 
                 if (exitTime > entryTime) {
+                    let isLate = false;
                     if (entryTime > sederStart + (sederConfig.punctualityLateThresholdMinutes / 60)) {
+                       isLate = true;
                        if (sederKey === 'בוקר') dailyDetail.isLateSederA = true;
                        else dailyDetail.isLateSederB = true;
                     }
+
+                    if (isEntryApproved || isExitApproved) {
+                        dailyDetail.isAbsenceApproved![sederConfig.id] = true;
+                        if(isLate) {
+                           dailyDetail.isLatenessApproved![sederConfig.id] = true;
+                        }
+                    }
+
                     const validDuration = Math.max(0, Math.min(exitTime, sederEnd) - Math.max(entryTime, sederStart));
                     dailyDetail.sederHours[sederConfig.id] = validDuration;
                     
-                    const formatTime = (val: string | number) => String(val || '0').replace(/,/g, '').padStart(4, '0').replace(/(\d{2})(\d{2})/, '$1:$2');
-                    rawTimeParts.push(`${formatTime(entryTimeRaw)}-${formatTime(exitTimeRaw)}`);
+                    rawTimeParts.push(`${formatTime(entryNum)}-${formatTime(exitNum)}`);
+                } else if (entryStr || exitStr) { // Show raw values even if invalid duration
+                     rawTimeParts.push(`${formatTime(entryNum)}-${formatTime(exitNum)}`);
                 }
             });
 
