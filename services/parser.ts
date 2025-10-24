@@ -54,40 +54,44 @@ const isMultiScholarFormat = (rows: (string | number)[][]): boolean => {
 
 const processMultiScholarSheet = (
     rows: (string|number)[][], 
-    settings: StipendSettings
+    settings: StipendSettings,
+    fileName?: string
 ): { scholarsData: { name: string; details: DailyDetail[]; bonusData: { [key: string]: number } }[], monthYear: string, activeDays: Set<string> } => {
     
-    // 1. Find the key header rows based on their content. This is more robust than assuming offsets.
+    const XLSX = (window as any).XLSX;
     let dateRowIndex = -1, sederRowIndex = -1, typeRowIndex = -1, nameRowIndex = -1;
     let nameColIndex = -1;
+    const dateRegex = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/;
+    const numericDayRegex = /^\d{1,2}$/;
 
-    // Search within the first 10 rows for headers
     for (let i = 0; i < Math.min(rows.length, 10); i++) {
         const row = rows[i] || [];
-        const stringRow = row.map(c => String(c || '').trim());
+        const stringRowForHeaders = row.map(c => String(c || '').trim());
+        
+        const dateLikeCells = row.filter(c => {
+            if (typeof c === 'number' && c > 25569) return true; // Check for Excel serial date number
+            const s = String(c).trim();
+            if (dateRegex.test(s)) return true;
+            if (numericDayRegex.test(s)) {
+                const num = Number(s);
+                return num > 0 && num < 32;
+            }
+            return false;
+        }).length;
 
-        // Test for Date Row: A high concentration of numbers between 1-31
-        const numericDays = stringRow.filter(c => /^\d{1,2}$/.test(c) && Number(c) > 0 && Number(c) < 32).length;
-        if (numericDays > 5 && dateRowIndex === -1) { // Heuristic: >5 days in the report
+        if (dateLikeCells > 2 && dateRowIndex === -1) {
             dateRowIndex = i;
         }
-
-        // Test for Seder Row: Contains common seder names like 'בוקר' or 'ערב'
-        const hasSederName = stringRow.includes('בוקר') || stringRow.includes('ערב') || stringRow.includes('צהריים');
-        if (hasSederName && sederRowIndex === -1) {
+        if ((stringRowForHeaders.includes('בוקר') || stringRowForHeaders.includes('ערב') || stringRowForHeaders.includes('צהריים')) && sederRowIndex === -1) {
             sederRowIndex = i;
         }
-
-        // Test for Type Row: Contains both 'כניסה' and 'יציאה'
-        if (stringRow.includes('כניסה') && stringRow.includes('יציאה') && typeRowIndex === -1) {
+        if (stringRowForHeaders.includes('כניסה') && stringRowForHeaders.includes('יציאה') && typeRowIndex === -1) {
             typeRowIndex = i;
         }
-
-        // Test for Name Column: find 'שם' or 'שם האברך'
-        const currentNameColIndex = stringRow.findIndex(c => c === 'שם' || c === 'שם האברך');
+        const currentNameColIndex = stringRowForHeaders.findIndex(c => c === 'שם' || c === 'שם האברך');
         if (currentNameColIndex !== -1 && nameColIndex === -1) {
             nameColIndex = currentNameColIndex;
-            nameRowIndex = i; // The row where we found the name header
+            nameRowIndex = i;
         }
     }
 
@@ -102,50 +106,75 @@ const processMultiScholarSheet = (
     const sederRow = rows[sederRowIndex];
     const typeRow = rows[typeRowIndex];
     
-    // The first row of actual data is after the last header row.
     const dataStartRow = Math.max(dateRowIndex, sederRowIndex, typeRowIndex, nameRowIndex) + 1;
     if (dataStartRow >= rows.length) {
         throw new Error("לא נמצאו שורות נתונים של אברכים מתחת לכותרות.");
     }
     
-    // Extract Month/Year
     let monthYear = '';
-    const dateRegex = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/; // dd/mm/yyyy or mm/dd/yyyy
-    const monthYearRegex = /(\d{1,2})\/(\d{2,4})/; // mm/yyyy
+    const monthYearRegex = /(\d{1,2})\/(\d{2,4})/;
+    const monthYearFromNameRegex = /(\d{2})[-_.](\d{2})/;
 
-    for (let i = 0; i < Math.min(rows.length, 10); i++) {
-        if (rows[i]) {
-            for (const cell of rows[i]) {
-                const sCell = String(cell);
-                let match = sCell.match(dateRegex);
-                if (match) {
-                    const month = match[2].padStart(2, '0');
-                    const year = match[3].length === 2 ? `20${match[3]}` : match[3];
-                    monthYear = `${month}/${year}`;
-                    break;
-                }
-                match = sCell.match(monthYearRegex);
-                if (match) {
-                    const month = match[1].padStart(2, '0');
-                    const year = match[2].length === 2 ? `20${match[2]}` : match[2];
-                    monthYear = `${month}/${year}`;
-                    break;
+    if (fileName) {
+        const nameMatch = fileName.match(monthYearFromNameRegex);
+        if (nameMatch) {
+            monthYear = `${nameMatch[1]}/20${nameMatch[2]}`;
+        }
+    }
+
+    if (!monthYear) {
+        for (let i = 0; i < Math.min(rows.length, 10); i++) {
+            if (rows[i]) {
+                for (const cell of rows[i]) {
+                    if (typeof cell === 'number' && cell > 25569) {
+                        const date = XLSX.SSF.parse_date_code(cell);
+                        monthYear = `${String(date.m).padStart(2, '0')}/${date.y}`;
+                        break;
+                    }
+                    const sCell = String(cell);
+                    let match = sCell.match(dateRegex);
+                    if (match) {
+                        const month = match[2].padStart(2, '0');
+                        const year = match[3].length === 2 ? `20${match[3]}` : match[3];
+                        monthYear = `${month}/${year}`;
+                        break;
+                    }
+                    match = sCell.match(monthYearRegex);
+                    if (match) {
+                        const month = match[1].padStart(2, '0');
+                        const year = match[2].length === 2 ? `20${match[2]}` : match[2];
+                        monthYear = `${month}/${year}`;
+                        break;
+                    }
                 }
             }
+            if (monthYear) break;
         }
-        if (monthYear) break;
     }
+
     if (!monthYear) throw new Error(`לא ניתן היה למצוא את חודש ושנת הדוח.`);
 
-    // 2. Map columns to their meaning (date, seder, type).
     const columnMap: { [colIndex: number]: { date: string, sederName: string, type: string } } = {};
     let currentDate: string | null = null;
     let currentSeder: string | null = null;
 
     for (let j = 0; j < Math.max(dateRow.length, sederRow.length, typeRow.length); j++) {
-        const dateCell = String(dateRow[j] || '').trim();
-        if (dateCell && /^\d{1,2}$/.test(dateCell) && Number(dateCell) > 0 && Number(dateCell) < 32) {
-            currentDate = dateCell;
+        const dateCell = dateRow[j];
+        if (dateCell !== null && dateCell !== undefined && dateCell !== '') {
+            let dayPart: string | null = null;
+            if (typeof dateCell === 'number' && dateCell > 25569) { // Excel serial date
+                const date = XLSX.SSF.parse_date_code(dateCell);
+                if (date) dayPart = String(date.d);
+            } else { // String date
+                const dateCellStr = String(dateCell).trim();
+                const dateMatch = dateCellStr.match(dateRegex);
+                if (dateMatch) {
+                    dayPart = dateMatch[1];
+                } else if (numericDayRegex.test(dateCellStr) && Number(dateCellStr) > 0 && Number(dateCellStr) < 32) {
+                    dayPart = dateCellStr;
+                }
+            }
+            if (dayPart) currentDate = dayPart;
         }
         
         const sederCell = String(sederRow[j] || '').trim();
@@ -164,32 +193,30 @@ const processMultiScholarSheet = (
         throw new Error("לא זוהו עמודות נתונים יומיות. בדוק את מבנה הכותרות (תאריך, סדר, סוג).");
     }
 
-    // 3. Determine active days for the entire kollel
     const activeDays = new Set<string>();
     const dailyDataColIndices = Object.keys(columnMap).map(Number);
 
     for (let i = dataStartRow; i < rows.length; i++) {
         const row = rows[i];
         if (!row) continue;
+        const name = String(row[nameColIndex] || '').trim();
+        if (!name || name.includes('סה"כ')) continue;
+
         for (const colIndex of dailyDataColIndices) {
             const cellValue = row[colIndex];
             if (cellValue && String(cellValue).trim() !== '') {
                 const mapInfo = columnMap[colIndex];
-                if (mapInfo) {
-                    activeDays.add(mapInfo.date);
-                }
+                if (mapInfo) activeDays.add(mapInfo.date);
             }
         }
     }
     
-    // Map general bonus columns
     const bonusColMap: { [bonusName: string]: number } = {};
     const dailyDataCols = new Set(Object.keys(columnMap).map(Number));
     (settings.generalBonuses || []).forEach(b => {
         const searchName = b.name.includes(' ') ? b.name.split(' ')[1] : b.name;
         for (let j = 0; j < Math.max(dateRow.length, sederRow.length, typeRow.length); j++) {
             if (j === nameColIndex || dailyDataCols.has(j)) continue;
-
             const header1 = String(rows[dateRowIndex]?.[j] || '').trim();
             const header2 = String(rows[sederRowIndex]?.[j] || '').trim();
             const header3 = String(rows[typeRowIndex]?.[j] || '').trim();
@@ -204,12 +231,11 @@ const processMultiScholarSheet = (
 
     const scholarsMap = new Map<string, { details: DailyDetail[], bonusData: { [key: string]: number } }>();
 
-    // Process scholar rows
     for (let i = dataStartRow; i < rows.length; i++) {
         const row = rows[i];
         if (!row) continue;
         const name = String(row[nameColIndex] || '').trim();
-        if (!name) continue;
+        if (!name || name.includes('סה"כ')) continue;
 
         if (!scholarsMap.has(name)) {
             const initialBonusData: { [key: string]: number } = {};
@@ -241,8 +267,8 @@ const processMultiScholarSheet = (
         
         const getSederKeyFromFile = (sederConfigName: string): string | null => {
             if (sederConfigName.includes('בוקר') || sederConfigName.includes("א'")) return 'בוקר';
-            if (sederConfigName.includes('ערב') || sederConfigName.includes("ב'")) return 'ערב';
-            return sederConfigName; // Fallback to the name itself
+            if (sederConfigName.includes('ערב') || sederConfigName.includes("ב'") || sederConfigName.includes('צהריים')) return 'ערב';
+            return sederConfigName;
         };
 
         scholarInfo.details = Array.from(dailyData.entries()).map(([date, data]) => {
@@ -263,7 +289,7 @@ const processMultiScholarSheet = (
                 const num = parseFloat(cleanStr.replace(/,/g, ''));
                 if (isNaN(num)) return (String(val).trim() === 'מ') ? 'מאושר' : '00:00';
                 const str = String(Math.floor(num));
-                return str.padStart(4, '0').replace(/(\d{2})(\d{2})/, '$1:$2');
+                return str.padStart(4, '0').replace(/(\d{1,2})(\d{2})/, '$1:$2');
             };
             
             settings.sedarim.forEach(sederConfig => {
@@ -316,7 +342,7 @@ const processMultiScholarSheet = (
                     dailyDetail.sederHours[sederConfig.id] = validDuration;
                     
                     rawTimeParts.push(`${formatTime(entryNum)}-${formatTime(exitNum)}`);
-                } else if (entryStr || exitStr) { // Show raw values even if invalid duration
+                } else if (entryStr || exitStr) {
                      rawTimeParts.push(`${formatTime(entryNum)}-${formatTime(exitNum)}`);
                 }
             });
@@ -435,7 +461,7 @@ const processSingleScholarSheet = (
     return { name, details, monthYear, bonusData };
 };
 
-export const parseXlsxAndCalculateStipends = (xlsxBuffer: ArrayBuffer, kollelDetails: KollelDetails): ParseResult => {
+export const parseXlsxAndCalculateStipends = (xlsxBuffer: ArrayBuffer, kollelDetails: KollelDetails, fileName?: string): ParseResult => {
     const XLSX = (window as any).XLSX;
     if (!XLSX) throw new Error('ספריית עיבוד קבצי האקסל (XLSX) לא נטענה.');
 
@@ -445,16 +471,18 @@ export const parseXlsxAndCalculateStipends = (xlsxBuffer: ArrayBuffer, kollelDet
     
     const settings = ensureSettingsCompatibility(kollelDetails.settings);
 
-    // Read first sheet to detect format
     const firstSheetName = workbook.SheetNames[0];
     const firstWorksheet = workbook.Sheets[firstSheetName];
     if (!firstWorksheet) throw new Error("הקובץ ריק או לא תקין.");
-    const firstSheetRows: (string|number)[][] = XLSX.utils.sheet_to_json(firstWorksheet, { header: 1, raw: false, defval: '' });
+    
+    // Read with raw:false first to reliably check format based on strings like "שם"
+    const firstSheetRowsForCheck: (string|number)[][] = XLSX.utils.sheet_to_json(firstWorksheet, { header: 1, raw: false, defval: '' });
 
-    if (isMultiScholarFormat(firstSheetRows)) {
-        // New multi-scholar format
+    if (isMultiScholarFormat(firstSheetRowsForCheck)) {
+        // Now, re-read with raw:true for more reliable date (number) parsing
+        const firstSheetRowsRaw: (string|number)[][] = XLSX.utils.sheet_to_json(firstWorksheet, { header: 1, raw: true, defval: '' });
         try {
-            const { scholarsData, monthYear, activeDays } = processMultiScholarSheet(firstSheetRows, settings);
+            const { scholarsData, monthYear, activeDays } = processMultiScholarSheet(firstSheetRowsRaw, settings, fileName);
             commonMonthYear = monthYear;
             scholarsData.forEach(scholarData => {
                 const scholarResult = calculateStipendForScholar(scholarData, settings, activeDays, monthYear);
@@ -462,14 +490,14 @@ export const parseXlsxAndCalculateStipends = (xlsxBuffer: ArrayBuffer, kollelDet
             });
         } catch (e) {
             console.error(`שגיאה בעיבוד גיליון "${firstSheetName}" בפורמט החדש: ${(e as Error).message}.`);
-            throw e; // Re-throw to show error to user
+            throw e;
         }
 
     } else {
-        // Original single-scholar-per-sheet format
         for (const sheetName of workbook.SheetNames) {
             const worksheet = workbook.Sheets[sheetName];
             if (!worksheet) continue;
+            // Use raw:false for old format to handle time strings like "09:00"
             const rows: (string|number)[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: '' });
             if (rows.length < 10) continue;
 
@@ -493,7 +521,6 @@ export const parseXlsxAndCalculateStipends = (xlsxBuffer: ArrayBuffer, kollelDet
     return { monthYear: commonMonthYear, results: allResults };
 };
 
-// Helper to migrate old settings structure to new one
 const ensureSettingsCompatibility = (settings: StipendSettings): StipendSettings => {
     let compatible: StipendSettings = JSON.parse(JSON.stringify(settings));
 
@@ -506,7 +533,6 @@ const ensureSettingsCompatibility = (settings: StipendSettings): StipendSettings
         delete compatible.deductionPerHour;
     }
     
-    // Migrate singleSederSettings to per-seder partialStipendPercentage
     if (compatible.singleSederSettings) {
         if (compatible.sedarim && compatible.sedarim.length > 0) {
             compatible.sedarim[0].partialStipendPercentage = compatible.singleSederSettings.sederAPercentage;

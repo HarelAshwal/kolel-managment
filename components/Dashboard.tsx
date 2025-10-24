@@ -101,7 +101,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
           throw new Error('לא ניתן היה לקרוא את תוכן הקובץ.');
         }
 
-        const { monthYear: newMonthYear, results } = parseXlsxAndCalculateStipends(content as ArrayBuffer, kollelDetails);
+        const { monthYear: newMonthYear, results } = parseXlsxAndCalculateStipends(content as ArrayBuffer, kollelDetails, file.name);
 
         setStipendResults(results);
         setMonthYear(newMonthYear);
