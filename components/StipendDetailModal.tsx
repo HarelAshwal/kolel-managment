@@ -22,14 +22,18 @@ const StipendDetailModal: React.FC<{
   if (!isOpen || !result) return null;
 
   const { settings } = kollelDetails;
+  
+  const timeToDecimal = (time: string): number => {
+    if (!time || !/^\d{1,2}:\d{2}$/.test(time)) return NaN;
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours + minutes / 60;
+  };
 
   const getDailyDeficit = (detail: DailyDetail, sederId: number): number => {
       const seder = settings.sedarim.find(s => s.id === sederId);
       if (!seder || detail.rawTime === 'חופש') return 0;
       
-      const start = new Date(`1970-01-01T${seder.startTime}:00`).getTime();
-      const end = new Date(`1970-01-01T${seder.endTime}:00`).getTime();
-      const sederDuration = (end - start) / (1000 * 60 * 60);
+      const sederDuration = timeToDecimal(seder.endTime) - timeToDecimal(seder.startTime);
 
       const attendedHours = detail.sederHours[sederId] || 0;
       return Math.max(0, sederDuration - attendedHours);
@@ -68,13 +72,24 @@ const StipendDetailModal: React.FC<{
   const handleApprovalChange = (dayIndex: number, sederId: number, type: 'absence' | 'lateness', isApproved: boolean) => {
       const newDetails = JSON.parse(JSON.stringify(result.details || []));
       const detail = newDetails[dayIndex];
+      const seder = settings.sedarim.find(s => s.id === sederId);
+      if (!seder) return;
 
       if (type === 'absence') {
           if (!detail.isAbsenceApproved) detail.isAbsenceApproved = {};
           detail.isAbsenceApproved[sederId] = isApproved;
+
+          // New logic: Adjust approvedAbsenceHours
+          if (!detail.approvedAbsenceHours) detail.approvedAbsenceHours = {};
+          const deficit = getDailyDeficit(detail, sederId); // deficit is based on actual hours
+          // When approving, we approve the entire deficit for that day.
+          detail.approvedAbsenceHours[sederId] = isApproved ? deficit : 0;
+
       } else {
           if (!detail.isLatenessApproved) detail.isLatenessApproved = {};
           detail.isLatenessApproved[sederId] = isApproved;
+          // Note: Lateness approval is handled separately in bonus calculation
+          // and doesn't affect approvedAbsenceHours for now.
       }
 
       // Recalculate stipend with new details
@@ -86,12 +101,6 @@ const StipendDetailModal: React.FC<{
   const assignedSedarim = settings.scholarOverrides?.[result.name]?.assignedSedarim || settings.sedarim.map(s => s.id);
   const assignedSedarimDetails = settings.sedarim.filter(s => assignedSedarim.includes(s.id));
   
-  const timeToDecimal = (time: string): number => {
-    if (!time || !/^\d{1,2}:\d{2}$/.test(time)) return NaN;
-    const [hours, minutes] = time.split(':').map(Number);
-    return hours + minutes / 60;
-  };
-
   const dailyRequiredHours = assignedSedarimDetails.reduce((total, seder) => {
     const start = timeToDecimal(seder.startTime);
     const end = timeToDecimal(seder.endTime);

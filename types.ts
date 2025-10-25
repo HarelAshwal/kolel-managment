@@ -97,6 +97,7 @@ export interface DailyDetail {
   isLateSederB?: boolean; // Kept for punctuality bonus logic
   isAbsenceApproved?: { [sederId: number]: boolean };
   isLatenessApproved?: { [sederId: number]: boolean };
+  approvedAbsenceHours?: Record<number, number>;
 }
 
 export interface StipendResult {

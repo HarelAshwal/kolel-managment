@@ -1,37 +1,34 @@
 import type { StipendResult, DailyDetail, KollelDetails, ParseResult, StipendSettings, Seder } from '../types';
 import { calculateStipendForScholar } from './calculator';
 
-const timeStringToDecimalHours = (timeStr: string): number => {
-    if (!timeStr) return 0;
-    const cleanedTimeStr = timeStr.trim().replace('*', '');
-    if (!/^\d{1,3}:\d{2}$/.test(cleanedTimeStr)) return 0;
-    const [hours, minutes] = cleanedTimeStr.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes)) return 0;
-    return hours + minutes / 60;
-};
+const parseSederTime = (timeStr: string | number): number | null => {
+    const cleanedTimeStr = String(timeStr || '').trim().replace('*', '').replace('מ', '');
+    if (!cleanedTimeStr) return null;
 
-const fourDigitTimeToDecimal = (time: string | number): number => {
-    // This function will now robustly parse numeric time values, including floats from Excel.
-    // The 'מ' logic is handled in the main processing function which calls this.
-    const timeStr = String(time || '').replace(/,/g, '').trim();
-    
-    const parsedNum = parseFloat(timeStr);
-    if (isNaN(parsedNum)) return 0;
+    // Case 1: HH:mm format
+    if (cleanedTimeStr.includes(':')) {
+        const parts = cleanedTimeStr.split(':');
+        if (parts.length === 2) {
+            const hours = parseInt(parts[0], 10);
+            const minutes = parseInt(parts[1], 10);
+            if (!isNaN(hours) && !isNaN(minutes) && hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+                return hours + minutes / 60;
+            }
+        }
+    }
 
-    const intNum = Math.floor(parsedNum);
-    const numStr = String(intNum);
+    // Case 2: HHmm format
+    const numericStr = cleanedTimeStr.replace(/[^0-9]/g, '');
+    if (numericStr.length >= 3 && numericStr.length <= 4) {
+        const paddedStr = numericStr.padStart(4, '0');
+        const hours = parseInt(paddedStr.substring(0, 2), 10);
+        const minutes = parseInt(paddedStr.substring(2, 4), 10);
+        if (!isNaN(hours) && !isNaN(minutes) && hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+            return hours + minutes / 60;
+        }
+    }
 
-    // Allow 1-4 digits, for times like '900' or '0'.
-    if (!/^\d{1,4}$/.test(numStr)) return 0;
-    
-    const paddedTimeStr = numStr.padStart(4, '0');
-    const hoursStr = paddedTimeStr.slice(0, -2);
-    const minutesStr = paddedTimeStr.slice(-2);
-    const hours = parseInt(hoursStr, 10);
-    const minutes = parseInt(minutesStr, 10);
-
-    if (isNaN(hours) || isNaN(minutes) || hours > 23 || minutes > 59) return 0;
-    return hours + minutes / 60;
+    return null;
 };
 
 
@@ -280,17 +277,10 @@ const processMultiScholarSheet = (
                 isLateSederB: false,
                 isAbsenceApproved: {},
                 isLatenessApproved: {},
+                approvedAbsenceHours: {},
             };
 
             const rawTimeParts: string[] = [];
-            
-            const formatTime = (val: string | number) => {
-                const cleanStr = String(val || '0').replace('מ', '').trim();
-                const num = parseFloat(cleanStr.replace(/,/g, ''));
-                if (isNaN(num)) return (String(val).trim() === 'מ') ? 'מאושר' : '00:00';
-                const str = String(Math.floor(num));
-                return str.padStart(4, '0').replace(/(\d{1,2})(\d{2})/, '$1:$2');
-            };
             
             settings.sedarim.forEach(sederConfig => {
                 const sederKey = getSederKeyFromFile(sederConfig.name);
@@ -305,45 +295,49 @@ const processMultiScholarSheet = (
                 const isEntryApproved = entryStr.includes('מ');
                 const isExitApproved = exitStr.includes('מ');
 
-                let entryNum = entryStr.replace('מ','');
-                let exitNum = exitStr.replace('מ','');
-
-                let entryTime = fourDigitTimeToDecimal(entryNum);
-                let exitTime = fourDigitTimeToDecimal(exitNum);
+                const actualEntryTime = parseSederTime(entryTimeRaw);
+                const actualExitTime = parseSederTime(exitTimeRaw);
                 
                 const sederStart = timeToDecimal(sederConfig.startTime);
                 const sederEnd = timeToDecimal(sederConfig.endTime);
 
-                if (entryStr === 'מ') {
-                   entryTime = sederStart;
-                   entryNum = sederConfig.startTime.replace(':','');
-                }
-                if (exitStr === 'מ') {
-                   exitTime = sederEnd;
-                   exitNum = sederConfig.endTime.replace(':','');
-                }
+                let attendedDuration = 0;
+                let approvedDuration = 0;
 
-                if (exitTime > entryTime) {
-                    let isLate = false;
-                    if (entryTime > sederStart + (sederConfig.punctualityLateThresholdMinutes / 60)) {
-                       isLate = true;
-                       if (sederKey === 'בוקר') dailyDetail.isLateSederA = true;
-                       else dailyDetail.isLateSederB = true;
-                    }
+                if (entryStr === 'מ' || exitStr === 'מ') {
+                    attendedDuration = 0;
+                    approvedDuration = sederEnd - sederStart;
+                } else if (actualEntryTime !== null && actualExitTime !== null && actualExitTime > actualEntryTime) {
+                    attendedDuration = Math.max(0, Math.min(actualExitTime, sederEnd) - Math.max(actualEntryTime, sederStart));
 
                     if (isEntryApproved || isExitApproved) {
-                        dailyDetail.isAbsenceApproved![sederConfig.id] = true;
-                        if(isLate) {
-                           dailyDetail.isLatenessApproved![sederConfig.id] = true;
-                        }
+                        const creditedEntry = isEntryApproved ? sederStart : actualEntryTime;
+                        const creditedExit = isExitApproved ? sederEnd : actualExitTime;
+                        const creditedTotalDuration = Math.max(0, Math.min(creditedExit, sederEnd) - Math.max(creditedEntry, sederStart));
+                        approvedDuration = Math.max(0, creditedTotalDuration - attendedDuration);
                     }
+                }
 
-                    const validDuration = Math.max(0, Math.min(exitTime, sederEnd) - Math.max(entryTime, sederStart));
-                    dailyDetail.sederHours[sederConfig.id] = validDuration;
-                    
-                    rawTimeParts.push(`${formatTime(entryNum)}-${formatTime(exitNum)}`);
-                } else if (entryStr || exitStr) {
-                     rawTimeParts.push(`${formatTime(entryNum)}-${formatTime(exitNum)}`);
+                dailyDetail.sederHours[sederConfig.id] = attendedDuration;
+                dailyDetail.approvedAbsenceHours![sederConfig.id] = approvedDuration;
+
+
+                let isLate = false;
+                if (actualEntryTime !== null && actualEntryTime > sederStart + (sederConfig.punctualityLateThresholdMinutes / 60)) {
+                   isLate = true;
+                   if (sederKey === 'בוקר') dailyDetail.isLateSederA = true;
+                   else dailyDetail.isLateSederB = true;
+                }
+                
+                if (isEntryApproved || isExitApproved) {
+                    dailyDetail.isAbsenceApproved![sederConfig.id] = true;
+                    if(isLate && isEntryApproved) {
+                       dailyDetail.isLatenessApproved![sederConfig.id] = true;
+                    }
+                }
+
+                if(entryTimeRaw || exitTimeRaw){
+                    rawTimeParts.push(`${entryStr}-${exitStr}`);
                 }
             });
 
@@ -426,6 +420,9 @@ const processSingleScholarSheet = (
             rawTime: '',
             isLateSederA: false,
             isLateSederB: false,
+            isAbsenceApproved: {},
+            isLatenessApproved: {},
+            approvedAbsenceHours: {},
         };
 
         if (Object.values(row).some(cell => String(cell).trim() === 'חופש')) {
@@ -440,17 +437,52 @@ const processSingleScholarSheet = (
             if(sederIndex >= entryIndices.length) break;
 
             const seder = sedarimConfig[sederIndex];
-            const entryTime = timeStringToDecimalHours(String(row[entryIndices[sederIndex]] || ''));
-            const exitTime = timeStringToDecimalHours(String(row[exitIndices[sederIndex]] || ''));
+            const entryTimeStr = String(row[entryIndices[sederIndex]] || '').trim();
+            const exitTimeStr = String(row[exitIndices[sederIndex]] || '').trim();
+
+            const isEntryApproved = entryTimeStr.includes('מ');
+            const isExitApproved = exitTimeStr.includes('מ');
             
-            if (exitTime > entryTime) {
-                if(entryTime > seder.startDecimal + (seder.punctualityLateThresholdMinutes / 60)) {
-                    if (seder.name.includes("א'")) dailyDetail.isLateSederA = true;
-                    if (seder.name.includes("ב'")) dailyDetail.isLateSederB = true;
+            const actualEntryTime = parseSederTime(entryTimeStr);
+            const actualExitTime = parseSederTime(exitTimeStr);
+
+            let attendedDuration = 0;
+            let approvedDuration = 0;
+
+            if (entryTimeStr === 'מ' || exitTimeStr === 'מ') {
+                attendedDuration = 0;
+                approvedDuration = seder.endDecimal - seder.startDecimal;
+            } else if (actualEntryTime !== null && actualExitTime !== null && actualExitTime > actualEntryTime) {
+                attendedDuration = Math.max(0, Math.min(actualExitTime, seder.endDecimal) - Math.max(actualEntryTime, seder.startDecimal));
+                
+                if (isEntryApproved || isExitApproved) {
+                    const creditedEntry = isEntryApproved ? seder.startDecimal : actualEntryTime;
+                    const creditedExit = isExitApproved ? seder.endDecimal : actualExitTime;
+                    const creditedTotalDuration = Math.max(0, Math.min(creditedExit, seder.endDecimal) - Math.max(creditedEntry, seder.startDecimal));
+                    approvedDuration = Math.max(0, creditedTotalDuration - attendedDuration);
                 }
-                const validDuration = Math.max(0, Math.min(exitTime, seder.endDecimal) - Math.max(entryTime, seder.startDecimal));
-                dailyDetail.sederHours[seder.id] = validDuration;
-                rawTimeParts.push(`${String(row[entryIndices[sederIndex]] || '')}-${String(row[exitIndices[sederIndex]] || '')}`);
+            }
+
+            dailyDetail.sederHours[seder.id] = attendedDuration;
+            dailyDetail.approvedAbsenceHours![seder.id] = approvedDuration;
+
+            let isLate = false;
+            if (actualEntryTime !== null && actualEntryTime > seder.startDecimal + (seder.punctualityLateThresholdMinutes / 60)) {
+                isLate = true;
+                if (seder.name.includes("א'")) dailyDetail.isLateSederA = true;
+                if (seder.name.includes("ב'")) dailyDetail.isLateSederB = true;
+            }
+            
+            // Set approval flags for UI and other logic
+            if (isEntryApproved || isExitApproved) {
+                dailyDetail.isAbsenceApproved![seder.id] = true;
+                if (isLate && isEntryApproved) {
+                    dailyDetail.isLatenessApproved![seder.id] = true;
+                }
+            }
+
+            if (entryTimeStr || exitTimeStr) {
+                rawTimeParts.push(`${entryTimeStr}-${exitTimeStr}`);
             }
         }
         

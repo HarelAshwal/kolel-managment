@@ -50,13 +50,16 @@ export const calculateStipendForScholar = (
     // --- Per-Seder Deduction Calculation ---
     let totalDeduction = 0;
     let totalCreditedHours = 0;
+    let totalActualHours = 0;
     let totalRequiredHours = 0;
     let totalApprovedAbsenceHours = 0;
     const deductionDetails: StipendResult['deductionDetails'] = [];
     const detailsByDay = new Map<string, DailyDetail>();
     details.forEach(d => {
-        const dayNum = d.day.split('/')[0];
-        detailsByDay.set(dayNum, d);
+        const dayNumMatch = d.day.match(/^\d+/);
+        if (dayNumMatch) {
+            detailsByDay.set(dayNumMatch[0], d);
+        }
     });
 
     for (const seder of assignedSedarim) {
@@ -66,8 +69,9 @@ export const calculateStipendForScholar = (
         const rules = seder.useCustomDeductions ? seder.deductions : settings.deductions;
 
         let sederTotalCreditedHours = 0;
+        let sederTotalActualHours = 0;
         
-        const relevantDays = activeDays ? Array.from(activeDays) : details.map(d => d.day.split('/')[0]);
+        const relevantDays = activeDays ? Array.from(activeDays) : details.map(d => d.day.match(/^\d+/)?.[0]).filter(Boolean) as string[];
         
         relevantDays.forEach(dayNum => {
             const detail = detailsByDay.get(dayNum);
@@ -76,15 +80,12 @@ export const calculateStipendForScholar = (
 
             if (detail) { // Scholar has an entry for this day
                 const attendedHours = detail.sederHours[seder.id] || 0;
-                const isAbsenceApproved = detail.isAbsenceApproved?.[seder.id] || false;
-                sederTotalCreditedHours += isAbsenceApproved ? sederDuration : attendedHours;
+                const approvedHours = detail.approvedAbsenceHours?.[seder.id] || 0;
+                
+                sederTotalActualHours += attendedHours;
+                sederTotalCreditedHours += attendedHours + approvedHours;
+                totalApprovedAbsenceHours += approvedHours;
 
-                if (isAbsenceApproved) {
-                    const potentialDeficit = sederDuration - attendedHours;
-                    if (potentialDeficit > 0) {
-                        totalApprovedAbsenceHours += potentialDeficit;
-                    }
-                }
             } else {
                 // Scholar was completely absent this day (no entry in their details).
                 // No hours are credited.
@@ -100,6 +101,7 @@ export const calculateStipendForScholar = (
 
         totalDeduction += sederDeduction;
         totalCreditedHours += sederTotalCreditedHours;
+        totalActualHours += sederTotalActualHours;
         totalRequiredHours += sederRequiredHours;
 
         if (sederHourDeficit > 0.01) { // Only add if there is a deficit
@@ -189,7 +191,7 @@ export const calculateStipendForScholar = (
 
     return {
         name,
-        totalHours: totalCreditedHours,
+        totalHours: totalActualHours,
         stipend: Math.max(0, finalStipend),
         details: fullDetails,
         bonusDetails,
