@@ -118,6 +118,12 @@ export const calculateStipendForScholar = (
     
     (assignedSedarim || []).forEach(seder => {
         if (!seder.punctualityBonusEnabled) return;
+
+        // Apply the global attendance threshold to punctuality bonuses.
+        if (settings.bonusAttendanceThresholdEnabled && overallAttendancePercentage < settings.bonusAttendanceThresholdPercent) {
+            return;
+        }
+
         const isSederA = seder.name.includes("א'");
 
         const lateCount = details.filter(d => {
@@ -147,7 +153,7 @@ export const calculateStipendForScholar = (
     });
 
     (settings.generalBonuses || []).forEach(bonusDef => {
-        if (bonusDef.subjectToAttendanceThreshold && overallAttendancePercentage < settings.bonusAttendanceThresholdPercent) return;
+        if (settings.bonusAttendanceThresholdEnabled && bonusDef.subjectToAttendanceThreshold && overallAttendancePercentage < settings.bonusAttendanceThresholdPercent) return;
         
         const countOrAmount = bonusData[bonusDef.name] || 0;
         if (countOrAmount <= 0) return;

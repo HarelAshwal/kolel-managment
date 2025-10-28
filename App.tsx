@@ -51,6 +51,7 @@ const defaultSettings: StipendSettings = {
     { id: 2, name: 'בונוס סיכום', amount: 50, bonusType: 'count', subjectToAttendanceThreshold: true },
     { id: 3, name: 'כולל שישי', amount: 50, bonusType: 'count', subjectToAttendanceThreshold: false },
   ],
+  bonusAttendanceThresholdEnabled: true,
   bonusAttendanceThresholdPercent: 80,
   rounding: 'upTo10',
   lastAiPrompt: 'מלגה חודשית של 1400 שקלים. על כל שעת חיסור מתחת ל-50% נוכחות, יש להוריד 12 שקלים, ומעל 50% נוכחות 6 שקלים. סדר בוקר 09:00-13:00 וסדר צהריים 16:00-19:15. יש בונוס שמירת סדרים.',

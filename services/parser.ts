@@ -607,6 +607,7 @@ const ensureSettingsCompatibility = (settings: StipendSettings): StipendSettings
     }));
 
     compatible.generalBonuses = (compatible.generalBonuses || []).map(b => ({ ...b, bonusType: b.bonusType || 'count', subjectToAttendanceThreshold: b.subjectToAttendanceThreshold || false }));
+    compatible.bonusAttendanceThresholdEnabled = compatible.bonusAttendanceThresholdEnabled ?? true;
     compatible.bonusAttendanceThresholdPercent = compatible.bonusAttendanceThresholdPercent || 80;
     compatible.rounding = compatible.rounding || 'none';
 

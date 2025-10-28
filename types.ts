@@ -37,6 +37,7 @@ export interface StipendSettings {
 
   sedarim: Seder[];
   generalBonuses: GeneralBonus[];
+  bonusAttendanceThresholdEnabled?: boolean;
   bonusAttendanceThresholdPercent: number;
   rounding: 'none' | 'upTo10';
 

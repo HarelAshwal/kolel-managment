@@ -43,6 +43,7 @@ const ensureSettingsCompatibility = (settings: StipendSettings): StipendSettings
         subjectToAttendanceThreshold: b.subjectToAttendanceThreshold || false
     }));
 
+    compatible.bonusAttendanceThresholdEnabled = compatible.bonusAttendanceThresholdEnabled ?? true;
     compatible.bonusAttendanceThresholdPercent = compatible.bonusAttendanceThresholdPercent || 80;
     compatible.rounding = compatible.rounding || 'none';
 
@@ -225,7 +226,12 @@ const StipendSettingsComponent: React.FC<StipendSettingsProps> = ({
                     {sederErrors[seder.id] && <p className="text-xs text-red-600 text-center">{sederErrors[seder.id]}</p>}
                     
                     <div className="mt-3 pt-3 border-t">
-                      <label className="block text-sm font-medium">אחוז מלגה (לנוכחים בסדר זה בלבד)</label>
+                      <label className="flex items-center gap-1 text-sm font-medium">
+                          <span>אחוז מלגה (לנוכחים בסדר זה בלבד)</span>
+                          <span title="מגדיר איזה אחוז מהמלגה החודשית יקבל אברך שנכח רק בסדר זה ולא בסדרים אחרים. שימושי לקביעת מלגות שונות לאברכי בוקר/ערב.">
+                              <InfoIcon className="w-4 h-4 text-slate-400 cursor-help" />
+                          </span>
+                      </label>
                       <input type="number" value={seder.partialStipendPercentage} onChange={e => handleSederChange(seder.id, 'partialStipendPercentage', e.target.value)} className="mt-1 w-full p-2 border rounded-md" placeholder="לדוגמה: 55" />
                     </div>
 
@@ -277,10 +283,30 @@ const StipendSettingsComponent: React.FC<StipendSettingsProps> = ({
       </fieldset>
 
       <fieldset className="p-4 border rounded-md">
+{/* Fix: Replaced corrupted JSX with a valid structure for the bonuses fieldset. */}
         <legend className="px-2 font-medium">בונוסים ותוספות</legend>
         <div className="mt-2">
-            <label className="block text-sm font-medium">סף נוכחות לקבלת בונוסים מסומנים (%)</label>
-            <input type="number" value={settings.bonusAttendanceThresholdPercent} onChange={e => handleSettingsChange('bonusAttendanceThresholdPercent', e.target.value)} className="mt-1 w-full p-2 border rounded-md" />
+            <label className="flex items-center gap-2 cursor-pointer text-sm font-medium">
+                <input 
+                    type="checkbox" 
+                    checked={settings.bonusAttendanceThresholdEnabled} 
+                    onChange={e => handleSettingsChange('bonusAttendanceThresholdEnabled', e.target.checked)} 
+                    className="h-4 w-4 rounded" 
+                />
+                הפעל סף נוכחות לקבלת בונוסים
+            </label>
+            {settings.bonusAttendanceThresholdEnabled && (
+                <div className="animate-fade-in pl-6">
+                    <label className="block text-sm font-medium">סף נוכחות נדרש (%)</label>
+                    <input 
+                        type="number" 
+                        value={settings.bonusAttendanceThresholdPercent} 
+                        onChange={e => handleSettingsChange('bonusAttendanceThresholdPercent', e.target.value)} 
+                        className="mt-1 w-full p-2 border rounded-md"
+                        placeholder="לדוגמה: 80"
+                    />
+                </div>
+            )}
         </div>
         <div className="space-y-3 mt-4">
             {settings.generalBonuses.map(bonus => (
