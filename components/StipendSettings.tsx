@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { StipendSettings, Seder, GeneralBonus } from '../types';
 import { BackIcon } from './icons/BackIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
@@ -6,6 +7,8 @@ import { generateStipendSettingsFromPrompt } from '../services/api';
 import { PlusIcon } from './icons/PlusIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import { InfoIcon } from './icons/InfoIcon';
+import { DownloadIcon } from './icons/DownloadIcon';
+import { UploadIcon } from './icons/UploadIcon';
 
 const ensureSettingsCompatibility = (settings: StipendSettings): StipendSettings => {
     let compatible: StipendSettings = JSON.parse(JSON.stringify(settings));
@@ -74,6 +77,7 @@ const StipendSettingsComponent: React.FC<StipendSettingsProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [sederErrors, setSederErrors] = useState<Record<number, string>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setSettings(ensureSettingsCompatibility(initialSettings));
@@ -141,6 +145,51 @@ const StipendSettingsComponent: React.FC<StipendSettingsProps> = ({
   
   const handleAddBonus = () => setSettings(p => ({ ...p, generalBonuses: [...p.generalBonuses, { id: Date.now(), name: 'בונוס חדש', amount: 100, bonusType: 'count', subjectToAttendanceThreshold: false }] }));
   const handleRemoveBonus = (id: number) => setSettings(p => ({ ...p, generalBonuses: p.generalBonuses.filter(b => b.id !== id) }));
+
+  const handleExportSettings = () => {
+    const dataStr = JSON.stringify(settings, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", url);
+    downloadAnchorNode.setAttribute("download", `stipend_settings_${new Date().toISOString().split('T')[0]}.json`);
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportSettings = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const fileReader = new FileReader();
+    if (event.target.files && event.target.files[0]) {
+        fileReader.readAsText(event.target.files[0], "UTF-8");
+        fileReader.onload = (e) => {
+            if (e.target?.result) {
+                try {
+                    const parsedSettings = JSON.parse(e.target.result as string);
+                    const compatibleSettings = ensureSettingsCompatibility(parsedSettings);
+                    
+                    if (window.confirm('האם אתה בטוח שברצונך לדרוס את ההגדרות הנוכחיות עם ההגדרות מהקובץ?')) {
+                        setSettings(prev => ({
+                            ...compatibleSettings,
+                            // Ensure we keep necessary fields if they are missing (unlikely if valid file)
+                            lastAiPrompt: compatibleSettings.lastAiPrompt || prev.lastAiPrompt
+                        }));
+                        if (compatibleSettings.lastAiPrompt) {
+                            setAiPrompt(compatibleSettings.lastAiPrompt);
+                        }
+                        alert('ההגדרות נטענו בהצלחה!');
+                    }
+                } catch (error) {
+                    console.error(error);
+                    alert('שגיאה בטעינת קובץ ההגדרות. ודא שהקובץ תקין.');
+                }
+            }
+        };
+        // Reset the input so the same file can be selected again if needed
+        event.target.value = '';
+    }
+  };
 
   const handleSave = () => {
     if (isSaveDisabled) return;
@@ -283,7 +332,6 @@ const StipendSettingsComponent: React.FC<StipendSettingsProps> = ({
       </fieldset>
 
       <fieldset className="p-4 border rounded-md">
-{/* Fix: Replaced corrupted JSX with a valid structure for the bonuses fieldset. */}
         <legend className="px-2 font-medium">בונוסים ותוספות</legend>
         <div className="mt-2">
             <label className="flex items-center gap-2 cursor-pointer text-sm font-medium">
@@ -327,6 +375,33 @@ const StipendSettingsComponent: React.FC<StipendSettingsProps> = ({
          <div className="mt-2">
             <label className="block text-sm font-medium">עיגול סכום סופי</label>
             <select value={settings.rounding} onChange={e => handleSettingsChange('rounding', e.target.value)} className="mt-1 w-full p-2 border rounded-md"><option value="none">ללא</option><option value="upTo10">עגל למעלה ל-10 הקרוב</option></select>
+         </div>
+         
+         <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+            <label className="block text-sm font-medium mb-2">ניהול הגדרות</label>
+            <div className="flex gap-4">
+                <button 
+                    onClick={handleExportSettings}
+                    className="flex-1 flex items-center justify-center gap-2 py-2 px-4 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-sm font-medium transition-colors"
+                >
+                    <DownloadIcon className="w-4 h-4" />
+                    ייצוא הגדרות (JSON)
+                </button>
+                <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex-1 flex items-center justify-center gap-2 py-2 px-4 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-sm font-medium transition-colors"
+                >
+                    <UploadIcon className="w-4 h-4" />
+                    ייבוא הגדרות
+                </button>
+                <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleImportSettings} 
+                    className="hidden" 
+                    accept=".json" 
+                />
+            </div>
          </div>
       </fieldset>
     </div>
