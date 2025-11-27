@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import type { StipendResult, KollelDetails, DailyDetail, StipendSettings } from '../types';
 import { exportDetailsToCsv } from '../services/exporter';
@@ -65,7 +66,7 @@ const StipendDetailModal: React.FC<{
 
     // Recalculate stipend with new settings
     const scholarData = { name: result.name, details: result.details || [], bonusData: {}}; // bonusData is not available for recalc here, but it's ok
-    const newResult = calculateStipendForScholar(scholarData, newSettings);
+    const newResult = calculateStipendForScholar(scholarData, newSettings, null, monthYear);
     onUpdateScholarResult(newResult);
   };
 
@@ -94,7 +95,7 @@ const StipendDetailModal: React.FC<{
 
       // Recalculate stipend with new details
       const scholarData = { name: result.name, details: newDetails, bonusData: {}};
-      const newResult = calculateStipendForScholar(scholarData, settings);
+      const newResult = calculateStipendForScholar(scholarData, settings, null, monthYear);
       onUpdateScholarResult(newResult);
   };
 

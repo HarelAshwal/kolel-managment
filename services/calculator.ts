@@ -1,9 +1,36 @@
+
 import type { StipendResult, DailyDetail, StipendSettings, Seder } from '../types';
 
 const timeToDecimal = (timeStr: string): number => {
     if (!/^\d{1,2}:\d{2}$/.test(timeStr)) return NaN;
     const [hours, minutes] = timeStr.split(':').map(Number);
     return hours + minutes / 60;
+};
+
+const getDayOfWeek = (dayInput: string, monthYearContext?: string | null): number => {
+    // Returns 0 (Sun) to 6 (Sat), or -1 if unknown
+    try {
+        if (dayInput.includes('/')) {
+            // Assume DD/MM/YYYY
+            const parts = dayInput.split('/');
+            if (parts.length === 3) {
+                 let year = parseInt(parts[2]);
+                 if (year < 100) year += 2000;
+                 return new Date(year, parseInt(parts[1]) - 1, parseInt(parts[0])).getDay();
+            }
+        }
+        
+        if (monthYearContext) {
+             const parts = monthYearContext.split('/');
+             if (parts.length >= 2) {
+                 let year = parseInt(parts[1]);
+                 if (year < 100) year += 2000;
+                 // dayInput is just day number
+                 return new Date(year, parseInt(parts[0]) - 1, parseInt(dayInput)).getDay();
+             }
+        }
+    } catch(e) { return -1; }
+    return -1;
 };
 
 export const calculateStipendForScholar = (
@@ -13,6 +40,17 @@ export const calculateStipendForScholar = (
   monthYear?: string | null
 ): StipendResult => {
     const { name, details, bonusData } = scholarData;
+    
+    // Determine Month/Year for context if not provided
+    let currentMonthYear = monthYear;
+    if (!currentMonthYear && details.length > 0) {
+        // Try to extract from first detail day "DD/MM/YYYY"
+        const match = details[0].day.match(/\d{1,2}\/(\d{1,2}\/\d{2,4})/);
+        if (match) {
+            currentMonthYear = match[1];
+        }
+    }
+
     const scholarOverrides = settings.scholarOverrides?.[name];
 
     const assignedSedarimIds = scholarOverrides?.assignedSedarim?.length
@@ -21,7 +59,28 @@ export const calculateStipendForScholar = (
     
     const assignedSedarim = settings.sedarim.filter(s => assignedSedarimIds.includes(s.id));
     
-    const workingDaysInMonth = activeDays ? activeDays.size : details.filter(d => d.rawTime !== 'חופש').length;
+    // Calculate Working Days (excluding Friday/Saturday)
+    let workingDaysCount = 0;
+    if (activeDays) {
+        activeDays.forEach(day => {
+            const dow = getDayOfWeek(day, currentMonthYear);
+            // 5 is Friday, 6 is Saturday. Count only if NOT Friday or Saturday.
+            if (dow !== 5 && dow !== 6) {
+                workingDaysCount++;
+            }
+        });
+    } else {
+        details.forEach(d => {
+             if (d.rawTime !== 'חופש') {
+                 const dow = getDayOfWeek(d.day, currentMonthYear);
+                 if (dow !== 5 && dow !== 6) {
+                    workingDaysCount++;
+                 }
+             }
+        });
+    }
+    
+    const workingDaysInMonth = workingDaysCount;
 
     // --- Base Stipend Calculation ---
     let baseStipend = settings.baseStipend;
@@ -86,9 +145,6 @@ export const calculateStipendForScholar = (
                 sederTotalCreditedHours += attendedHours + approvedHours;
                 totalApprovedAbsenceHours += approvedHours;
 
-            } else {
-                // Scholar was completely absent this day (no entry in their details).
-                // No hours are credited.
             }
         });
 
@@ -194,6 +250,11 @@ export const calculateStipendForScholar = (
         });
     }
 
+    // Filter out Fridays (5) and Saturdays (6) from the UI list
+    fullDetails = fullDetails.filter(d => {
+        const dow = getDayOfWeek(d.day, currentMonthYear);
+        return dow !== 5 && dow !== 6;
+    });
 
     return {
         name,
