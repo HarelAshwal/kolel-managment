@@ -1,4 +1,5 @@
-import type { StipendResult, DailyDetail, KollelDetails, ParseResult, StipendSettings, Seder } from '../types';
+
+import type { StipendResult, DailyDetail, KollelDetails, ParseResult, StipendSettings, Seder, GeneralBonus } from '../types';
 import { calculateStipendForScholar } from './calculator';
 
 const parseSederTime = (timeStr: string | number): number | null => {
@@ -606,7 +607,21 @@ const ensureSettingsCompatibility = (settings: StipendSettings): StipendSettings
         deductions: s.deductions || { highRate: 25, lowRate: 20, attendanceThresholdPercent: 90 },
     }));
 
-    compatible.generalBonuses = (compatible.generalBonuses || []).map(b => ({ ...b, bonusType: b.bonusType || 'count', subjectToAttendanceThreshold: b.subjectToAttendanceThreshold || false }));
+    compatible.generalBonuses = (compatible.generalBonuses || []).map((b: GeneralBonus) => {
+        const bonus = { ...b, bonusType: b.bonusType || 'count' };
+        if (!bonus.attendanceConditionType) {
+            if (bonus.subjectToAttendanceThreshold) {
+                bonus.attendanceConditionType = 'global';
+            } else {
+                bonus.attendanceConditionType = 'none';
+            }
+        }
+        if (!bonus.customConditions) {
+            bonus.customConditions = [];
+        }
+        return bonus;
+    });
+    
     compatible.bonusAttendanceThresholdEnabled = compatible.bonusAttendanceThresholdEnabled ?? true;
     compatible.bonusAttendanceThresholdPercent = compatible.bonusAttendanceThresholdPercent || 80;
     compatible.rounding = compatible.rounding || 'none';

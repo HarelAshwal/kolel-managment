@@ -1,3 +1,4 @@
+
 export interface Seder {
   id: number; // For React keys
   name: string;
@@ -18,12 +19,19 @@ export interface Seder {
   };
 }
 
+export interface BonusCondition {
+    threshold: number; // e.g. 75%
+    percent: number;   // e.g. 100% of the bonus, 66%, 0%
+}
+
 export interface GeneralBonus {
   id: number; // For React keys
   name: string;
   amount: number;
   bonusType: 'count' | 'amount'; 
-  subjectToAttendanceThreshold: boolean;
+  subjectToAttendanceThreshold: boolean; // Deprecated, kept for backward compatibility
+  attendanceConditionType?: 'none' | 'global' | 'custom';
+  customConditions?: BonusCondition[];
 }
 
 export interface StipendSettings {

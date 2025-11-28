@@ -40,11 +40,20 @@ const ensureSettingsCompatibility = (settings: StipendSettings): StipendSettings
         deductions: s.deductions || { highRate: 25, lowRate: 20, attendanceThresholdPercent: 90 },
     }));
 
-    compatible.generalBonuses = (compatible.generalBonuses || []).map((b: GeneralBonus) => ({
-        ...b,
-        bonusType: b.bonusType || 'count',
-        subjectToAttendanceThreshold: b.subjectToAttendanceThreshold || false
-    }));
+    compatible.generalBonuses = (compatible.generalBonuses || []).map((b: GeneralBonus) => {
+        const bonus = { ...b, bonusType: b.bonusType || 'count' };
+        if (!bonus.attendanceConditionType) {
+            if (bonus.subjectToAttendanceThreshold) {
+                bonus.attendanceConditionType = 'global';
+            } else {
+                bonus.attendanceConditionType = 'none';
+            }
+        }
+        if (!bonus.customConditions) {
+            bonus.customConditions = [];
+        }
+        return bonus;
+    });
 
     compatible.bonusAttendanceThresholdEnabled = compatible.bonusAttendanceThresholdEnabled ?? true;
     compatible.bonusAttendanceThresholdPercent = compatible.bonusAttendanceThresholdPercent || 80;
@@ -140,10 +149,45 @@ const StipendSettingsComponent: React.FC<StipendSettingsProps> = ({
   const handleSederDeductionChange = (id: number, field: string, value: any) => setSettings(p => ({...p, sedarim: p.sedarim.map(s => s.id === id ? { ...s, deductions: { ...s.deductions, [field]: value } } : s)}));
   const handleBonusChange = (id: number, field: keyof GeneralBonus, value: any) => setSettings(p => ({...p, generalBonuses: p.generalBonuses.map(b => b.id === id ? { ...b, [field]: value } : b)}));
 
+  const handleAddBonusCondition = (bonusId: number) => {
+      setSettings(p => ({
+          ...p,
+          generalBonuses: p.generalBonuses.map(b => {
+              if (b.id !== bonusId) return b;
+              const newConditions = [...(b.customConditions || [])];
+              newConditions.push({ threshold: 65, percent: 50 });
+              return { ...b, customConditions: newConditions };
+          })
+      }));
+  };
+
+  const handleUpdateBonusCondition = (bonusId: number, index: number, field: 'threshold' | 'percent', value: string) => {
+      setSettings(p => ({
+          ...p,
+          generalBonuses: p.generalBonuses.map(b => {
+              if (b.id !== bonusId) return b;
+              const newConditions = [...(b.customConditions || [])];
+              newConditions[index] = { ...newConditions[index], [field]: Number(value) };
+              return { ...b, customConditions: newConditions };
+          })
+      }));
+  };
+
+  const handleRemoveBonusCondition = (bonusId: number, index: number) => {
+      setSettings(p => ({
+          ...p,
+          generalBonuses: p.generalBonuses.map(b => {
+              if (b.id !== bonusId) return b;
+              const newConditions = b.customConditions?.filter((_, i) => i !== index);
+              return { ...b, customConditions: newConditions };
+          })
+      }));
+  };
+
   const handleAddSeder = () => setSettings(p => ({ ...p, sedarim: [...p.sedarim, { id: Date.now(), name: `סדר ${p.sedarim.length + 1}`, startTime: '09:00', endTime: '13:00', punctualityBonusEnabled: false, punctualityLateThresholdMinutes: 10, punctualityBonusAmount: 0, punctualityBonusCancellationThreshold: 4, partialStipendPercentage: 50, useCustomDeductions: false, deductions: { highRate: 25, lowRate: 20, attendanceThresholdPercent: 90 } }] }));
   const handleRemoveSeder = (id: number) => setSettings(p => ({ ...p, sedarim: p.sedarim.filter(s => s.id !== id) }));
   
-  const handleAddBonus = () => setSettings(p => ({ ...p, generalBonuses: [...p.generalBonuses, { id: Date.now(), name: 'בונוס חדש', amount: 100, bonusType: 'count', subjectToAttendanceThreshold: false }] }));
+  const handleAddBonus = () => setSettings(p => ({ ...p, generalBonuses: [...p.generalBonuses, { id: Date.now(), name: 'בונוס חדש', amount: 100, bonusType: 'count', subjectToAttendanceThreshold: false, attendanceConditionType: 'none', customConditions: [] }] }));
   const handleRemoveBonus = (id: number) => setSettings(p => ({ ...p, generalBonuses: p.generalBonuses.filter(b => b.id !== id) }));
 
   const handleExportSettings = () => {
@@ -341,29 +385,76 @@ const StipendSettingsComponent: React.FC<StipendSettingsProps> = ({
                     onChange={e => handleSettingsChange('bonusAttendanceThresholdEnabled', e.target.checked)} 
                     className="h-4 w-4 rounded" 
                 />
-                הפעל סף נוכחות לקבלת בונוסים
+                הפעל סף נוכחות גלובלי (ברירת מחדל לבונוסים)
             </label>
             {settings.bonusAttendanceThresholdEnabled && (
-                <div className="animate-fade-in pl-6">
+                <div className="animate-fade-in pl-6 mt-1">
                     <label className="block text-sm font-medium">סף נוכחות נדרש (%)</label>
                     <input 
                         type="number" 
                         value={settings.bonusAttendanceThresholdPercent} 
                         onChange={e => handleSettingsChange('bonusAttendanceThresholdPercent', e.target.value)} 
-                        className="mt-1 w-full p-2 border rounded-md"
-                        placeholder="לדוגמה: 80"
+                        className="mt-1 w-24 p-2 border rounded-md"
+                        placeholder="80"
                     />
                 </div>
             )}
         </div>
         <div className="space-y-3 mt-4">
             {settings.generalBonuses.map(bonus => (
-                <div key={bonus.id} className="grid grid-cols-[1fr,auto,auto,auto,auto] gap-2 items-center p-2 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
-                    <input type="text" placeholder="שם הבונוס" value={bonus.name} onChange={e => handleBonusChange(bonus.id, 'name', e.target.value)} className="p-2 border rounded-md"/>
-                    <input type="number" placeholder="סכום" value={bonus.amount} onChange={e => handleBonusChange(bonus.id, 'amount', e.target.value)} className="w-24 p-2 border rounded-md" />
-                    <select value={bonus.bonusType} onChange={e => handleBonusChange(bonus.id, 'bonusType', e.target.value)} className="p-2 border rounded-md"><option value="count">לפי כמות</option><option value="amount">סכום ישיר</option></select>
-                    <label className="flex items-center gap-1 text-xs p-2 rounded-md hover:bg-slate-200"><input type="checkbox" checked={bonus.subjectToAttendanceThreshold} onChange={e => handleBonusChange(bonus.id, 'subjectToAttendanceThreshold', e.target.checked)} className="h-4 w-4" />מותנה נוכחות</label>
-                    <button onClick={() => handleRemoveBonus(bonus.id)} className="p-2 text-slate-400 hover:text-red-500"><TrashIcon className="w-5 h-5"/></button>
+                <div key={bonus.id} className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg border">
+                    <div className="flex flex-wrap gap-2 items-center justify-between mb-2">
+                         <div className="flex gap-2 items-center flex-grow">
+                             <input type="text" placeholder="שם הבונוס" value={bonus.name} onChange={e => handleBonusChange(bonus.id, 'name', e.target.value)} className="p-2 border rounded-md flex-grow min-w-[120px]"/>
+                             <input type="number" placeholder="סכום" value={bonus.amount} onChange={e => handleBonusChange(bonus.id, 'amount', e.target.value)} className="w-20 p-2 border rounded-md" />
+                         </div>
+                         <div className="flex gap-2 items-center">
+                             <select value={bonus.bonusType} onChange={e => handleBonusChange(bonus.id, 'bonusType', e.target.value)} className="p-2 border rounded-md text-sm"><option value="count">לפי כמות</option><option value="amount">סכום ישיר</option></select>
+                             <button onClick={() => handleRemoveBonus(bonus.id)} className="p-2 text-slate-400 hover:text-red-500"><TrashIcon className="w-5 h-5"/></button>
+                         </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 mt-2 text-sm">
+                        <span className="text-slate-600 dark:text-slate-300">תנאי נוכחות:</span>
+                        <select 
+                            value={bonus.attendanceConditionType} 
+                            onChange={e => handleBonusChange(bonus.id, 'attendanceConditionType', e.target.value)}
+                            className="p-1 border rounded bg-white dark:bg-slate-800"
+                        >
+                            <option value="none">ללא תנאי (תמיד)</option>
+                            <option value="global">סף גלובלי ({settings.bonusAttendanceThresholdPercent}%)</option>
+                            <option value="custom">מותאם אישית (מדורג)</option>
+                        </select>
+                    </div>
+
+                    {bonus.attendanceConditionType === 'custom' && (
+                        <div className="mt-2 p-2 bg-slate-100 dark:bg-slate-800 rounded animate-fade-in text-sm">
+                             <div className="mb-2 font-medium text-xs text-slate-500">מדרגות בונוס לפי נוכחות:</div>
+                             {(bonus.customConditions || []).map((cond, idx) => (
+                                 <div key={idx} className="flex items-center gap-2 mb-2">
+                                     <span>אם נוכחות &ge;</span>
+                                     <input 
+                                         type="number" 
+                                         value={cond.threshold} 
+                                         onChange={e => handleUpdateBonusCondition(bonus.id, idx, 'threshold', e.target.value)} 
+                                         className="w-16 p-1 border rounded text-center" 
+                                         placeholder="%"
+                                     />
+                                     <span>% -> קבל</span>
+                                     <input 
+                                         type="number" 
+                                         value={cond.percent} 
+                                         onChange={e => handleUpdateBonusCondition(bonus.id, idx, 'percent', e.target.value)} 
+                                         className="w-16 p-1 border rounded text-center"
+                                         placeholder="%"
+                                     />
+                                     <span>% מהבונוס</span>
+                                     <button onClick={() => handleRemoveBonusCondition(bonus.id, idx)} className="text-red-400 hover:text-red-600 px-2">×</button>
+                                 </div>
+                             ))}
+                             <button onClick={() => handleAddBonusCondition(bonus.id)} className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold">+ הוסף מדרגה</button>
+                        </div>
+                    )}
                 </div>
             ))}
             <button onClick={handleAddBonus} className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed rounded-md text-sm hover:bg-slate-100"><PlusIcon className="w-5 h-5"/> הוסף בונוס/תוספת</button>

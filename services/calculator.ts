@@ -209,14 +209,43 @@ export const calculateStipendForScholar = (
     });
 
     (settings.generalBonuses || []).forEach(bonusDef => {
-        if (settings.bonusAttendanceThresholdEnabled && bonusDef.subjectToAttendanceThreshold && overallAttendancePercentage < settings.bonusAttendanceThresholdPercent) return;
-        
         const countOrAmount = bonusData[bonusDef.name] || 0;
         if (countOrAmount <= 0) return;
 
-        const bonusAmount = bonusDef.bonusType === 'count' ? countOrAmount * bonusDef.amount : countOrAmount;
-        totalBonus += bonusAmount;
-        bonusDetails.push({ name: bonusDef.name, count: bonusDef.bonusType === 'count' ? countOrAmount : 1, totalAmount: bonusAmount });
+        let bonusMultiplier = 1;
+
+        if (bonusDef.attendanceConditionType === 'global') {
+             if (settings.bonusAttendanceThresholdEnabled && overallAttendancePercentage < settings.bonusAttendanceThresholdPercent) {
+                 bonusMultiplier = 0;
+             }
+        } else if (bonusDef.attendanceConditionType === 'custom' && bonusDef.customConditions && bonusDef.customConditions.length > 0) {
+             bonusMultiplier = 0; // Default to 0 if custom conditions exist but none are met
+             // Sort by threshold descending to find the highest match
+             const sortedConditions = [...bonusDef.customConditions].sort((a, b) => b.threshold - a.threshold);
+             
+             for (const condition of sortedConditions) {
+                 if (overallAttendancePercentage >= condition.threshold) {
+                     bonusMultiplier = condition.percent / 100;
+                     break;
+                 }
+             }
+        } 
+        // Fallback for legacy data/migration safety
+        else if (bonusDef.subjectToAttendanceThreshold && settings.bonusAttendanceThresholdEnabled && overallAttendancePercentage < settings.bonusAttendanceThresholdPercent) {
+             bonusMultiplier = 0;
+        }
+
+        if (bonusMultiplier > 0) {
+            const baseAmount = bonusDef.bonusType === 'count' ? countOrAmount * bonusDef.amount : countOrAmount;
+            const finalAmount = baseAmount * bonusMultiplier;
+            
+            totalBonus += finalAmount;
+            bonusDetails.push({ 
+                name: bonusDef.name + (bonusMultiplier < 1 ? ` (${(bonusMultiplier * 100).toFixed(0)}%)` : ''), 
+                count: bonusDef.bonusType === 'count' ? countOrAmount : 1, 
+                totalAmount: finalAmount 
+            });
+        }
     });
     
     // --- Final Calculation ---
