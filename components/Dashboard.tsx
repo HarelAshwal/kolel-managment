@@ -1,8 +1,10 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import type { KollelDetails, StipendResult, MonthlyData, StipendSettings } from '../types';
 import { parseXlsxAndCalculateStipends } from '../services/parser';
 import { exportSummaryToCsv } from '../services/exporter';
 import { getSavedData, saveMonthlyData, deleteMonthlyData } from '../services/api';
+import { generateAndDownloadTemplate } from '../services/templateGenerator';
 import AttendanceTable from './AttendanceTable';
 import Reports from './Reports';
 // Fix: Renamed component import to avoid name collision with the StipendSettings type.
@@ -16,6 +18,7 @@ import { BackIcon } from './icons/BackIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import { ChartIcon } from './icons/ChartIcon';
 import { CoinsIcon } from './icons/CoinsIcon';
+import { FileExcelIcon } from './icons/FileExcelIcon';
 
 
 interface DashboardProps {
@@ -200,6 +203,22 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
     return (
       <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-8 text-center">
         <h2 className="text-2xl font-semibold mb-6">אפשרויות ניהול</h2>
+        
+        {/* Template Download Section */}
+        <div className="mb-8 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+             <div className="text-right">
+                 <h3 className="font-bold text-blue-800 dark:text-blue-300">חדש במערכת?</h3>
+                 <p className="text-sm text-blue-600 dark:text-blue-400">הורד קובץ תבנית תואם לתוכנת <strong>קל מוסד / JBClock (APT)</strong>, מלא אותו, והעלה חזרה.</p>
+             </div>
+             <button 
+                onClick={generateAndDownloadTemplate}
+                className="flex items-center gap-2 bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700 px-4 py-2 rounded-md hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors shadow-sm font-medium whitespace-nowrap"
+             >
+                 <FileExcelIcon className="w-5 h-5" />
+                 הורד תבנית עבודה
+             </button>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <button onClick={handleUploadClick} disabled={isLoading} className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 transform hover:scale-105">
             <UploadIcon className="w-12 h-12 text-indigo-500 mb-3" />

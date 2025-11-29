@@ -144,7 +144,7 @@ const StipendSettingsComponent: React.FC<StipendSettingsProps> = ({
   };
   
   const handleSettingsChange = (field: keyof StipendSettings, value: any) => setSettings(p => ({...p, [field]: value}));
-  const handleNestedChange = (area: keyof StipendSettings, field: string, value: any) => setSettings(p => ({...p, [area]: {...p[area], [field]: value}}));
+  const handleNestedChange = (area: keyof StipendSettings, field: string, value: any) => setSettings(p => ({...p, [area]: { ...(p[area] as any), [field]: value } }));
   const handleSederChange = (id: number, field: keyof Seder, value: any) => setSettings(p => ({...p, sedarim: p.sedarim.map(s => s.id === id ? { ...s, [field]: value } : s)}));
   const handleSederDeductionChange = (id: number, field: string, value: any) => setSettings(p => ({...p, sedarim: p.sedarim.map(s => s.id === id ? { ...s, deductions: { ...s.deductions, [field]: value } } : s)}));
   const handleBonusChange = (id: number, field: keyof GeneralBonus, value: any) => setSettings(p => ({...p, generalBonuses: p.generalBonuses.map(b => b.id === id ? { ...b, [field]: value } : b)}));
@@ -499,12 +499,52 @@ const StipendSettingsComponent: React.FC<StipendSettingsProps> = ({
   );
 
   return (
-    <div className="w-full max-w-3xl mx-auto bg-white dark:bg-slate-800 shadow-2xl rounded-2xl p-8">
-      <div className="flex items-center gap-3 mb-6"><button onClick={onBack} className="p-2 rounded-full hover:bg-slate-200"><BackIcon className="w-6 h-6" /></button><h2 className="text-3xl font-bold">הגדרות מלגה</h2></div>
-      <div className="mb-6 flex p-1 bg-slate-100 dark:bg-slate-700 rounded-lg"><button onClick={() => setMode('ai')} className={`w-1/2 p-2 rounded-md font-semibold ${mode === 'ai' ? 'bg-white shadow' : ''}`}>הגדרה עם AI</button><button onClick={() => setMode('manual')} className={`w-1/2 p-2 rounded-md font-semibold ${mode === 'manual' ? 'bg-white shadow' : ''}`}>הגדרה ידנית</button></div>
+    <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-6 w-full max-w-4xl mx-auto">
+      <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-200 dark:border-slate-700">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" title="חזרה">
+            <BackIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" />
+          </button>
+          <h2 className="text-2xl font-semibold">הגדרות מלגה</h2>
+        </div>
+        <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
+          <button
+            onClick={() => setMode('manual')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${mode === 'manual' ? 'bg-white dark:bg-slate-600 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
+          >
+            עריכה ידנית
+          </button>
+          <button
+            onClick={() => setMode('ai')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${mode === 'ai' ? 'bg-white dark:bg-slate-600 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
+          >
+            <SparklesIcon className="w-4 h-4" />
+            עוזר AI
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-6 bg-red-100 dark:bg-red-900/30 border-r-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg">
+          <p className="font-bold">שגיאה</p>
+          <p>{error}</p>
+        </div>
+      )}
+
       {mode === 'ai' ? renderAiMode() : renderManualMode()}
-      {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-      <div className="flex justify-end pt-4 border-t mt-6"><button type="button" onClick={handleSave} disabled={isLoading || isSaveDisabled} className="w-full sm:w-auto py-3 px-8 rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-400" title={isSaveDisabled ? "יש לתקן שגיאות חפיפה בסדרים" : ""}>שמירת שינויים</button></div>
+
+      <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-4">
+        <button onClick={onBack} className="px-6 py-2 border border-slate-300 dark:border-slate-600 rounded-md text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+          ביטול
+        </button>
+        <button 
+          onClick={handleSave} 
+          disabled={isSaveDisabled}
+          className="px-6 py-2 bg-indigo-600 text-white rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-2"
+        >
+          {isSaveDisabled ? 'יש לתקן שגיאות' : 'שמור שינויים'}
+        </button>
+      </div>
     </div>
   );
 };
