@@ -440,7 +440,7 @@ const StipendSettingsComponent: React.FC<StipendSettingsProps> = ({
                                          className="w-16 p-1 border rounded text-center" 
                                          placeholder="%"
                                      />
-                                     <span>% -> קבל</span>
+                                     <span>% - קבל</span>
                                      <input 
                                          type="number" 
                                          value={cond.percent} 
