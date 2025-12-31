@@ -1,3 +1,4 @@
+
 import type { StipendResult, ScholarReportData } from '../types';
 
 /**
@@ -74,7 +75,8 @@ export const exportDetailsToCsv = (result: StipendResult) => {
 
   const headers = ['תאריך', 'זמן / סטטוס', 'שעות (עשרוני)'];
   const rows = result.details.map(d => {
-    const dailyTotalHours = Object.values(d.sederHours).reduce((sum, h) => sum + h, 0);
+    // Fix: Explicitly type sum and h in reduce to avoid 'unknown' errors
+    const dailyTotalHours = Object.values(d.sederHours).reduce((sum: number, h: number) => sum + h, 0);
     return [
         d.day,
         d.rawTime,

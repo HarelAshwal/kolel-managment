@@ -1,3 +1,4 @@
+
 import type { MonthlyData, ScholarReportData, ReportSummary, TimelineDataPoint, KollelDetails } from '../types';
 
 const parseMonthYear = (monthYear: string): Date => {
@@ -40,7 +41,8 @@ export const generateReport = (
       aggregation[result.name].totalHours += result.totalHours;
       aggregation[result.name].monthsCount += 1;
       
-      const activeDays = result.details?.filter(d => Object.values(d.sederHours).reduce((a, b) => a + b, 0) > 0 && d.rawTime !== 'חופש').length || 0;
+      // Fix: Explicitly type reduce parameters to avoid unknown type errors
+      const activeDays = result.details?.filter(d => Object.values(d.sederHours).reduce((a: number, b: number) => a + b, 0) > 0 && d.rawTime !== 'חופש').length || 0;
       aggregation[result.name].totalTargetHours += activeDays * dailyTarget;
     }
   }

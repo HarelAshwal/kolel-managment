@@ -1,11 +1,14 @@
+
 import React from 'react';
 import type { TimelineDataPoint } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface LineChartProps {
   data: TimelineDataPoint[];
 }
 
 const LineChart: React.FC<LineChartProps> = ({ data }) => {
+  const { t } = useLanguage();
   const width = 800;
   const height = 300;
   const margin = { top: 20, right: 20, bottom: 60, left: 50 };
@@ -64,10 +67,10 @@ const LineChart: React.FC<LineChartProps> = ({ data }) => {
                     </g>
                 ))}
                  <text x={innerWidth / 2} y={innerHeight + 55} textAnchor="middle" className="text-sm fill-current text-slate-600 dark:text-slate-300">
-                    חודש
+                    {t('chart_month')}
                 </text>
                 <text transform={`translate(-35, ${innerHeight/2}) rotate(-90)`} textAnchor="middle" className="text-sm fill-current text-slate-600 dark:text-slate-300">
-                    ממוצע שעות
+                    {t('chart_avg_hours')}
                 </text>
 
 
@@ -77,7 +80,7 @@ const LineChart: React.FC<LineChartProps> = ({ data }) => {
                 {/* Points */}
                 {data.map((d, i) => (
                     <circle key={i} cx={getX(i)} cy={getY(d.averageHours)} r={4} className="fill-current text-indigo-500 stroke-current text-white dark:text-slate-800" strokeWidth={2}>
-                        <title>{`${d.monthYear}: ${d.averageHours.toFixed(2)} שעות`}</title>
+                        <title>{`${d.monthYear}: ${d.averageHours.toFixed(2)} ${t('hours')}`}</title>
                     </circle>
                 ))}
             </g>

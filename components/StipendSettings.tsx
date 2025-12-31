@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { StipendSettings, Seder, GeneralBonus } from '../types';
+import type { StipendSettings, Seder, GeneralBonus, PunctualityTier } from '../types';
 import { BackIcon } from './icons/BackIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
 import { generateStipendSettingsFromPrompt } from '../services/api';
@@ -9,541 +9,241 @@ import { TrashIcon } from './icons/TrashIcon';
 import { InfoIcon } from './icons/InfoIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
 import { UploadIcon } from './icons/UploadIcon';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const ensureSettingsCompatibility = (settings: StipendSettings): StipendSettings => {
     let compatible: StipendSettings = JSON.parse(JSON.stringify(settings));
-
     if (!compatible.deductions) {
-        compatible.deductions = {
-            highRate: settings.deductionPerHour || 25,
-            lowRate: (settings.deductionPerHour || 25) * 0.8,
-            attendanceThresholdPercent: 90,
-        };
-        delete compatible.deductionPerHour;
+        compatible.deductions = { highRate: 25, lowRate: 20, attendanceThresholdPercent: 90 };
     }
-
-    if (compatible.singleSederSettings) {
-        if (compatible.sedarim && compatible.sedarim.length > 0) {
-            compatible.sedarim[0].partialStipendPercentage = compatible.singleSederSettings.sederAPercentage;
-        }
-        if (compatible.sedarim && compatible.sedarim.length > 1) {
-            compatible.sedarim[1].partialStipendPercentage = compatible.singleSederSettings.sederBPercentage;
-        }
-        delete compatible.singleSederSettings;
-    }
-
-    compatible.sedarim = (compatible.sedarim || []).map((s: Seder) => ({
+    compatible.baseStipendCalculationMethod = compatible.baseStipendCalculationMethod || 'deduction';
+    compatible.fallbackHourlyRate = compatible.fallbackHourlyRate || 10;
+    compatible.baseStipendType = compatible.baseStipendType || 'monthly';
+    compatible.sedarim = (compatible.sedarim || []).map(s => ({
         ...s,
-        punctualityBonusCancellationThreshold: s.punctualityBonusCancellationThreshold || 4,
-        partialStipendPercentage: s.partialStipendPercentage || 0,
-        useCustomDeductions: s.useCustomDeductions || false,
-        deductions: s.deductions || { highRate: 25, lowRate: 20, attendanceThresholdPercent: 90 },
+        earlyExitToleranceMinutes: s.earlyExitToleranceMinutes || 0,
+        punctualityLateThresholdMinutes: s.punctualityLateThresholdMinutes || 0,
+        punctualityBonusType: s.punctualityBonusType || 'fixed',
+        punctualityTiers: s.punctualityTiers || []
     }));
-
-    compatible.generalBonuses = (compatible.generalBonuses || []).map((b: GeneralBonus) => {
-        const bonus = { ...b, bonusType: b.bonusType || 'count' };
-        if (!bonus.attendanceConditionType) {
-            if (bonus.subjectToAttendanceThreshold) {
-                bonus.attendanceConditionType = 'global';
-            } else {
-                bonus.attendanceConditionType = 'none';
-            }
-        }
-        if (!bonus.customConditions) {
-            bonus.customConditions = [];
-        }
-        return bonus;
-    });
-
-    compatible.bonusAttendanceThresholdEnabled = compatible.bonusAttendanceThresholdEnabled ?? true;
-    compatible.bonusAttendanceThresholdPercent = compatible.bonusAttendanceThresholdPercent || 80;
-    compatible.rounding = compatible.rounding || 'none';
-
+    compatible.generalBonuses = (compatible.generalBonuses || []).map(b => ({
+        ...b,
+        attendanceConditionType: b.attendanceConditionType || (b.subjectToAttendanceThreshold ? 'global' : 'none'),
+        customConditions: b.customConditions || []
+    }));
     return compatible;
 };
 
-
-interface StipendSettingsProps {
-  initialSettings: StipendSettings;
-  onSave: (newSettings: StipendSettings) => void;
-  onBack: () => void;
-}
-
-const timeToDecimal = (time: string): number => {
-    if (!time || !/^\d{1,2}:\d{2}$/.test(time)) return NaN;
-    const [hours, minutes] = time.split(':').map(Number);
-    return hours + minutes / 60;
+const HelpTooltip: React.FC<{ text: string }> = ({ text }) => {
+    const [isVisible, setIsVisible] = useState(false);
+    
+    return (
+        <span 
+            className="relative inline-flex items-center mx-1 align-middle group"
+            onMouseEnter={() => setIsVisible(true)}
+            onMouseLeave={() => setIsVisible(false)}
+            onClick={(e) => { e.preventDefault(); setIsVisible(!isVisible); }}
+            role="tooltip"
+        >
+            <InfoIcon className="w-4 h-4 text-slate-400 hover:text-indigo-500 cursor-help transition-colors" />
+            
+            {isVisible && (
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-56 p-2 bg-slate-900 text-white text-xs rounded-lg shadow-xl z-[100] whitespace-normal font-normal text-center leading-relaxed">
+                    {text}
+                    {/* Arrow */}
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
+                </div>
+            )}
+        </span>
+    );
 };
 
-const StipendSettingsComponent: React.FC<StipendSettingsProps> = ({
-  initialSettings,
-  onSave,
-  onBack,
-}) => {
+const StipendSettingsComponent: React.FC<{ initialSettings: StipendSettings; onSave: (s: StipendSettings) => void; onBack: () => void; }> = ({ initialSettings, onSave, onBack }) => {
+  const { t } = useLanguage();
   const [mode, setMode] = useState<'ai' | 'manual'>('manual');
-  const [aiPrompt, setAiPrompt] = useState(initialSettings.lastAiPrompt || 'מלגה חודשית של 2000 שקלים. על כל שעת חיסור מתחת ל-7 שעות ביום, יש להוריד 25 שקלים.');
   const [settings, setSettings] = useState<StipendSettings>(() => ensureSettingsCompatibility(initialSettings));
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [sederErrors, setSederErrors] = useState<Record<number, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    setSettings(ensureSettingsCompatibility(initialSettings));
-  }, [initialSettings]);
+  const handleSettingsChange = (f: keyof StipendSettings, v: any) => setSettings(p => ({...p, [f]: v}));
+  const handleNestedChange = (a: keyof StipendSettings, f: string, v: any) => setSettings(p => ({...p, [a]: { ...(p[a] as any), [f]: v } }));
+  const handleSederChange = (id: number, f: keyof Seder, v: any) => setSettings(p => ({...p, sedarim: p.sedarim.map(s => s.id === id ? { ...s, [f]: v } : s)}));
+
+  const handleAddSederTier = (id: number) => setSettings(p => ({...p, sedarim: p.sedarim.map(s => s.id === id ? {...s, punctualityTiers: [...(s.punctualityTiers||[]), {maxFailures: 3, amount: 10}]} : s)}));
+  const handleRemoveSederTier = (sederId: number, tierIdx: number) => setSettings(p => ({...p, sedarim: p.sedarim.map(s => s.id === sederId ? {...s, punctualityTiers: s.punctualityTiers?.filter((_, i) => i !== tierIdx)} : s)}));
   
-  useEffect(() => {
-    const newErrors: Record<number, string> = {};
-    const sedarim = settings.sedarim || [];
-    for (let i = 0; i < sedarim.length; i++) {
-        const s1 = sedarim[i];
-        const start1 = timeToDecimal(s1.startTime);
-        const end1 = timeToDecimal(s1.endTime);
-        if (isNaN(start1) || isNaN(end1) || start1 >= end1) {
-            newErrors[s1.id] = 'זמן הסיום חייב להיות אחרי זמן ההתחלה.';
-            continue;
-        }
-        for (let j = i + 1; j < sedarim.length; j++) {
-            const s2 = sedarim[j];
-            const start2 = timeToDecimal(s2.startTime);
-            const end2 = timeToDecimal(s2.endTime);
-            if (isNaN(start2) || isNaN(end2)) continue;
-            if (start1 < end2 && end1 > start2) {
-                newErrors[s1.id] = `חפיפה עם '${s2.name}'`;
-                newErrors[s2.id] = `חפיפה עם '${s1.name}'`;
-            }
-        }
-    }
-    setSederErrors(newErrors);
-  }, [settings.sedarim]);
-
-  const dailyHoursTarget = useMemo(() => {
-    return (settings.sedarim || []).reduce((total, seder) => {
-        const start = timeToDecimal(seder.startTime);
-        const end = timeToDecimal(seder.endTime);
-        if (!isNaN(start) && !isNaN(end) && end > start) return total + (end - start);
-        return total;
-    }, 0);
-  }, [settings.sedarim]);
-
-  const isSaveDisabled = Object.keys(sederErrors).length > 0;
-
-  const handleGenerate = async () => {
-    if (!aiPrompt.trim()) { setError('יש לכתוב תיאור לחישוב המלגה.'); return; }
-    setError(''); setIsLoading(true);
-    try {
-      const generated = await generateStipendSettingsFromPrompt(aiPrompt);
-      const compatibleGenerated = ensureSettingsCompatibility(generated);
-      setSettings({ ...settings, ...compatibleGenerated, lastAiPrompt: aiPrompt });
-      setMode('manual');
-    } catch (err) {
-      setError('שגיאה ביצירת ההגדרות. נסו לנסח את הבקשה באופן ברור יותר.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  
-  const handleSettingsChange = (field: keyof StipendSettings, value: any) => setSettings(p => ({...p, [field]: value}));
-  const handleNestedChange = (area: keyof StipendSettings, field: string, value: any) => setSettings(p => ({...p, [area]: { ...(p[area] as any), [field]: value } }));
-  const handleSederChange = (id: number, field: keyof Seder, value: any) => setSettings(p => ({...p, sedarim: p.sedarim.map(s => s.id === id ? { ...s, [field]: value } : s)}));
-  const handleSederDeductionChange = (id: number, field: string, value: any) => setSettings(p => ({...p, sedarim: p.sedarim.map(s => s.id === id ? { ...s, deductions: { ...s.deductions, [field]: value } } : s)}));
-  const handleBonusChange = (id: number, field: keyof GeneralBonus, value: any) => setSettings(p => ({...p, generalBonuses: p.generalBonuses.map(b => b.id === id ? { ...b, [field]: value } : b)}));
-
-  const handleAddBonusCondition = (bonusId: number) => {
-      setSettings(p => ({
-          ...p,
-          generalBonuses: p.generalBonuses.map(b => {
-              if (b.id !== bonusId) return b;
-              const newConditions = [...(b.customConditions || [])];
-              newConditions.push({ threshold: 65, percent: 50 });
-              return { ...b, customConditions: newConditions };
-          })
-      }));
-  };
-
-  const handleUpdateBonusCondition = (bonusId: number, index: number, field: 'threshold' | 'percent', value: string) => {
-      setSettings(p => ({
-          ...p,
-          generalBonuses: p.generalBonuses.map(b => {
-              if (b.id !== bonusId) return b;
-              const newConditions = [...(b.customConditions || [])];
-              newConditions[index] = { ...newConditions[index], [field]: Number(value) };
-              return { ...b, customConditions: newConditions };
-          })
-      }));
-  };
-
-  const handleRemoveBonusCondition = (bonusId: number, index: number) => {
-      setSettings(p => ({
-          ...p,
-          generalBonuses: p.generalBonuses.map(b => {
-              if (b.id !== bonusId) return b;
-              const newConditions = b.customConditions?.filter((_, i) => i !== index);
-              return { ...b, customConditions: newConditions };
-          })
-      }));
-  };
-
-  const handleAddSeder = () => setSettings(p => ({ ...p, sedarim: [...p.sedarim, { id: Date.now(), name: `סדר ${p.sedarim.length + 1}`, startTime: '09:00', endTime: '13:00', punctualityBonusEnabled: false, punctualityLateThresholdMinutes: 10, punctualityBonusAmount: 0, punctualityBonusCancellationThreshold: 4, partialStipendPercentage: 50, useCustomDeductions: false, deductions: { highRate: 25, lowRate: 20, attendanceThresholdPercent: 90 } }] }));
-  const handleRemoveSeder = (id: number) => setSettings(p => ({ ...p, sedarim: p.sedarim.filter(s => s.id !== id) }));
-  
-  const handleAddBonus = () => setSettings(p => ({ ...p, generalBonuses: [...p.generalBonuses, { id: Date.now(), name: 'בונוס חדש', amount: 100, bonusType: 'count', subjectToAttendanceThreshold: false, attendanceConditionType: 'none', customConditions: [] }] }));
-  const handleRemoveBonus = (id: number) => setSettings(p => ({ ...p, generalBonuses: p.generalBonuses.filter(b => b.id !== id) }));
-
-  const handleExportSettings = () => {
-    const dataStr = JSON.stringify(settings, null, 2);
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", url);
-    downloadAnchorNode.setAttribute("download", `stipend_settings_${new Date().toISOString().split('T')[0]}.json`);
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImportSettings = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const fileReader = new FileReader();
-    if (event.target.files && event.target.files[0]) {
-        fileReader.readAsText(event.target.files[0], "UTF-8");
-        fileReader.onload = (e) => {
-            if (e.target?.result) {
-                try {
-                    const parsedSettings = JSON.parse(e.target.result as string);
-                    const compatibleSettings = ensureSettingsCompatibility(parsedSettings);
-                    
-                    if (window.confirm('האם אתה בטוח שברצונך לדרוס את ההגדרות הנוכחיות עם ההגדרות מהקובץ?')) {
-                        setSettings(prev => ({
-                            ...compatibleSettings,
-                            // Ensure we keep necessary fields if they are missing (unlikely if valid file)
-                            lastAiPrompt: compatibleSettings.lastAiPrompt || prev.lastAiPrompt
-                        }));
-                        if (compatibleSettings.lastAiPrompt) {
-                            setAiPrompt(compatibleSettings.lastAiPrompt);
-                        }
-                        alert('ההגדרות נטענו בהצלחה!');
-                    }
-                } catch (error) {
-                    console.error(error);
-                    alert('שגיאה בטעינת קובץ ההגדרות. ודא שהקובץ תקין.');
-                }
-            }
-        };
-        // Reset the input so the same file can be selected again if needed
-        event.target.value = '';
-    }
-  };
-
-  const handleSave = () => {
-    if (isSaveDisabled) return;
-    const settingsToSave = JSON.parse(JSON.stringify(settings), (key, value) => {
-        if (['baseStipend', 'highRate', 'lowRate', 'attendanceThresholdPercent', 'punctualityLateThresholdMinutes', 'punctualityBonusAmount', 'punctualityBonusCancellationThreshold', 'amount', 'bonusAttendanceThresholdPercent', 'partialStipendPercentage'].includes(key)) {
-            return Number(value);
-        }
-        return value;
-    });
-    onSave(settingsToSave);
-  };
-
-  const renderAiMode = () => (
-    <div className="space-y-6 animate-fade-in">
-        <p className="text-sm text-center bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 p-3 rounded-lg">
-            מצב AI מיועד ליצירת תבנית ראשונית. לאחר היצירה תוכלו לערוך את כל ההגדרות המורכבות במצב הידני.
-        </p>
-        <textarea id="prompt" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={3} className="mt-1 w-full block p-3 border rounded-md" placeholder="לדוגמה: מלגה חודשית של 2000 שקלים..." disabled={isLoading}/>
-        <button onClick={handleGenerate} disabled={isLoading || !aiPrompt.trim()} className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400">
-            {isLoading ? <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>מעבד...</> : <><SparklesIcon className="w-5 h-5" />יצירת הגדרות ועריכה</>}
-        </button>
-    </div>
-  );
+  const handleAddBonusTier = (id: number) => setSettings(p => ({...p, generalBonuses: p.generalBonuses.map(b => b.id === id ? {...b, customConditions: [...(b.customConditions||[]), {threshold: 75, percent: 100}]} : b)}));
+  const handleRemoveBonusTier = (bonusId: number, tierIdx: number) => setSettings(p => ({...p, generalBonuses: p.generalBonuses.map(b => b.id === bonusId ? {...b, customConditions: b.customConditions?.filter((_, i) => i !== tierIdx)} : b)}));
 
   const renderManualMode = () => (
     <div className="space-y-6 animate-fade-in">
       <fieldset className="p-4 border rounded-md">
-        <legend className="px-2 font-medium">הגדרות בסיס וניכויים גלובליים</legend>
-        <div className="grid grid-cols-2 gap-4 mt-2">
+        <legend className="px-2 font-medium">{t('base_settings')}</legend>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-                <label className="block text-sm font-medium">מלגת בסיס (ש"ח)</label>
-                <input type="number" value={settings.baseStipend} onChange={e => handleSettingsChange('baseStipend', e.target.value)} className="mt-1 w-full p-2 border rounded-md" />
-            </div>
-            <div>
-                <label className="block text-sm font-medium">יעד שעות יומי (אוטומטי)</label>
-                <div className="mt-1 w-full p-2 border rounded-md bg-slate-100 dark:bg-slate-800 font-bold">{dailyHoursTarget.toFixed(2)} שעות</div>
-            </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t">
-            <div>
-                <label className="flex items-center gap-1 text-sm font-medium">
-                    <span>ניכוי גבוה (ש"ח לשעה)</span>
-                    <span title="הסכום שיורד על כל שעת חיסור כאשר הנוכחות הכללית של האברך נמוכה מהסף שנקבע.">
-                        <InfoIcon className="w-4 h-4 text-slate-400 cursor-help" />
-                    </span>
+                <label className="block text-sm font-medium flex items-center mb-1">
+                    {t('calc_method')}
+                    <HelpTooltip text={t('help_calc_method')} />
                 </label>
-                <input type="number" value={settings.deductions.highRate} onChange={e => handleNestedChange('deductions', 'highRate', e.target.value)} className="mt-1 w-full p-2 border rounded-md" />
+                <select value={settings.baseStipendCalculationMethod} onChange={e => handleSettingsChange('baseStipendCalculationMethod', e.target.value)} className="w-full p-2 border rounded-md bg-white dark:bg-slate-700 dark:border-slate-600">
+                    <option value="deduction">{t('method_regular')}</option>
+                    <option value="hourly_fallback">{t('method_fallback')}</option>
+                </select>
             </div>
-            <div>
-                <label className="flex items-center gap-1 text-sm font-medium">
-                    <span>ניכוי נמוך (ש"ח לשעה)</span>
-                     <span title="הסכום שיורד על כל שעת חיסור כאשר הנוכחות הכללית של האברך גבוהה או שווה לסף שנקבע.">
-                        <InfoIcon className="w-4 h-4 text-slate-400 cursor-help" />
-                    </span>
-                </label>
-                <input type="number" value={settings.deductions.lowRate} onChange={e => handleNestedChange('deductions', 'lowRate', e.target.value)} className="mt-1 w-full p-2 border rounded-md" />
-            </div>
-            <div>
-                <label className="flex items-center gap-1 text-sm font-medium">
-                    <span>סף נוכחות לניכוי נמוך (%)</span>
-                     <span title="אחוז הנוכחות הכללי שהאברך צריך לעמוד בו כדי להיות זכאי לניכוי הנמוך. אם נוכחותו נמוכה מסף זה, יחול הניכוי הגבוה.">
-                        <InfoIcon className="w-4 h-4 text-slate-400 cursor-help" />
-                    </span>
-                </label>
-                <input type="number" value={settings.deductions.attendanceThresholdPercent} onChange={e => handleNestedChange('deductions', 'attendanceThresholdPercent', e.target.value)} className="mt-1 w-full p-2 border rounded-md" />
-            </div>
-        </div>
-      </fieldset>
-      
-      <fieldset className="p-4 border rounded-md">
-        <legend className="px-2 font-medium">סדרי לימוד</legend>
-        <div className="space-y-4 mt-2">
-            {settings.sedarim.map(seder => (
-                <div key={seder.id} className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg border">
-                   <div className="flex items-center justify-between mb-3">
-                     <input type="text" value={seder.name} onChange={e => handleSederChange(seder.id, 'name', e.target.value)} className="font-semibold bg-transparent text-lg border-0 border-b-2" />
-                     <button onClick={() => handleRemoveSeder(seder.id)} className="p-1 text-slate-400 hover:text-red-500"><TrashIcon className="w-5 h-5"/></button>
-                   </div>
-                   <div className="grid grid-cols-2 gap-4 mb-2">
-                       <input type="text" pattern="^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$" placeholder="HH:mm התחלה" value={seder.startTime} onChange={e => handleSederChange(seder.id, 'startTime', e.target.value)} className={`w-full p-2 border rounded-md font-mono ${sederErrors[seder.id] ? 'border-red-500' : ''}`} maxLength={5} />
-                       <input type="text" pattern="^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$" placeholder="HH:mm סיום" value={seder.endTime} onChange={e => handleSederChange(seder.id, 'endTime', e.target.value)} className={`w-full p-2 border rounded-md font-mono ${sederErrors[seder.id] ? 'border-red-500' : ''}`} maxLength={5} />
-                   </div>
-                    {sederErrors[seder.id] && <p className="text-xs text-red-600 text-center">{sederErrors[seder.id]}</p>}
-                    
-                    <div className="mt-3 pt-3 border-t">
-                      <label className="flex items-center gap-1 text-sm font-medium">
-                          <span>אחוז מלגה (לנוכחים בסדר זה בלבד)</span>
-                          <span title="מגדיר איזה אחוז מהמלגה החודשית יקבל אברך שנכח רק בסדר זה ולא בסדרים אחרים. שימושי לקביעת מלגות שונות לאברכי בוקר/ערב.">
-                              <InfoIcon className="w-4 h-4 text-slate-400 cursor-help" />
-                          </span>
-                      </label>
-                      <input type="number" value={seder.partialStipendPercentage} onChange={e => handleSederChange(seder.id, 'partialStipendPercentage', e.target.value)} className="mt-1 w-full p-2 border rounded-md" placeholder="לדוגמה: 55" />
-                    </div>
-
-                    <label className="flex items-center gap-2 cursor-pointer text-sm mt-3"><input type="checkbox" checked={seder.punctualityBonusEnabled} onChange={e => handleSederChange(seder.id, 'punctualityBonusEnabled', e.target.checked)} className="h-4 w-4 rounded" />הפעל "שמירת סדרים"</label>
-                    {seder.punctualityBonusEnabled && (
-                       <div className="grid grid-cols-3 gap-4 p-3 bg-slate-100 dark:bg-slate-800 rounded-md animate-fade-in mt-2">
-                           <div><label className="block text-xs font-medium">סף איחור (דקות)</label><input type="number" value={seder.punctualityLateThresholdMinutes} onChange={e => handleSederChange(seder.id, 'punctualityLateThresholdMinutes', e.target.value)} className="mt-1 w-full p-2 border rounded-md" /></div>
-                           <div><label className="block text-xs font-medium">סכום בונוס (ש"ח)</label><input type="number" value={seder.punctualityBonusAmount} onChange={e => handleSederChange(seder.id, 'punctualityBonusAmount', e.target.value)} className="mt-1 w-full p-2 border rounded-md" /></div>
-                           <div><label className="block text-xs font-medium">ביטול אחרי X איחורים</label><input type="number" value={seder.punctualityBonusCancellationThreshold} onChange={e => handleSederChange(seder.id, 'punctualityBonusCancellationThreshold', e.target.value)} className="mt-1 w-full p-2 border rounded-md" /></div>
-                       </div>
-                    )}
-
-                    <label className="flex items-center gap-2 cursor-pointer text-sm mt-3"><input type="checkbox" checked={seder.useCustomDeductions} onChange={e => handleSederChange(seder.id, 'useCustomDeductions', e.target.checked)} className="h-4 w-4 rounded" />הפעל כללי ניכויים מיוחדים לסדר זה</label>
-                    {seder.useCustomDeductions && (
-                       <div className="grid grid-cols-3 gap-4 p-3 bg-slate-100 dark:bg-slate-800 rounded-md animate-fade-in mt-2">
-                           <div>
-                                <label className="flex items-center gap-1 text-xs font-medium">
-                                    <span>ניכוי גבוה</span>
-                                    <span title="הסכום שיורד על כל שעת חיסור כאשר הנוכחות הכללית של האברך נמוכה מהסף שנקבע.">
-                                        <InfoIcon className="w-3 h-3 text-slate-400 cursor-help" />
-                                    </span>
-                                </label>
-                                <input type="number" value={seder.deductions.highRate} onChange={e => handleSederDeductionChange(seder.id, 'highRate', e.target.value)} className="mt-1 w-full p-2 border rounded-md" />
-                           </div>
-                           <div>
-                                <label className="flex items-center gap-1 text-xs font-medium">
-                                    <span>ניכוי נמוך</span>
-                                    <span title="הסכום שיורד על כל שעת חיסור כאשר הנוכחות הכללית של האברך גבוהה או שווה לסף שנקבע.">
-                                        <InfoIcon className="w-3 h-3 text-slate-400 cursor-help" />
-                                    </span>
-                                </label>
-                                <input type="number" value={seder.deductions.lowRate} onChange={e => handleSederDeductionChange(seder.id, 'lowRate', e.target.value)} className="mt-1 w-full p-2 border rounded-md" />
-                           </div>
-                           <div>
-                                <label className="flex items-center gap-1 text-xs font-medium">
-                                    <span>סף (%)</span>
-                                    <span title="אחוז הנוכחות הכללי שהאברך צריך לעמוד בו כדי להיות זכאי לניכוי הנמוך. אם נוכחותו נמוכה מסף זה, יחול הניכוי הגבוה.">
-                                        <InfoIcon className="w-3 h-3 text-slate-400 cursor-help" />
-                                    </span>
-                                </label>
-                                <input type="number" value={seder.deductions.attendanceThresholdPercent} onChange={e => handleSederDeductionChange(seder.id, 'attendanceThresholdPercent', e.target.value)} className="mt-1 w-full p-2 border rounded-md" />
-                           </div>
-                       </div>
-                    )}
-                </div>
-            ))}
-            <button onClick={handleAddSeder} className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed rounded-md text-sm hover:bg-slate-100"><PlusIcon className="w-5 h-5"/> הוסף סדר</button>
-        </div>
-      </fieldset>
-
-      <fieldset className="p-4 border rounded-md">
-        <legend className="px-2 font-medium">בונוסים ותוספות</legend>
-        <div className="mt-2">
-            <label className="flex items-center gap-2 cursor-pointer text-sm font-medium">
-                <input 
-                    type="checkbox" 
-                    checked={settings.bonusAttendanceThresholdEnabled} 
-                    onChange={e => handleSettingsChange('bonusAttendanceThresholdEnabled', e.target.checked)} 
-                    className="h-4 w-4 rounded" 
-                />
-                הפעל סף נוכחות גלובלי (ברירת מחדל לבונוסים)
-            </label>
-            {settings.bonusAttendanceThresholdEnabled && (
-                <div className="animate-fade-in pl-6 mt-1">
-                    <label className="block text-sm font-medium">סף נוכחות נדרש (%)</label>
-                    <input 
-                        type="number" 
-                        value={settings.bonusAttendanceThresholdPercent} 
-                        onChange={e => handleSettingsChange('bonusAttendanceThresholdPercent', e.target.value)} 
-                        className="mt-1 w-24 p-2 border rounded-md"
-                        placeholder="80"
-                    />
+            {settings.baseStipendCalculationMethod === 'hourly_fallback' && (
+                <div>
+                    <label className="block text-sm font-medium flex items-center mb-1">
+                        {t('fallback_rate_label')}
+                        <HelpTooltip text={t('help_fallback_rate')} />
+                    </label>
+                    <input type="number" value={settings.fallbackHourlyRate} onChange={e => handleSettingsChange('fallbackHourlyRate', Number(e.target.value))} className="w-full p-2 border rounded-md bg-white dark:bg-slate-700 dark:border-slate-600" />
                 </div>
             )}
-        </div>
-        <div className="space-y-3 mt-4">
-            {settings.generalBonuses.map(bonus => (
-                <div key={bonus.id} className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg border">
-                    <div className="flex flex-wrap gap-2 items-center justify-between mb-2">
-                         <div className="flex gap-2 items-center flex-grow">
-                             <input type="text" placeholder="שם הבונוס" value={bonus.name} onChange={e => handleBonusChange(bonus.id, 'name', e.target.value)} className="p-2 border rounded-md flex-grow min-w-[120px]"/>
-                             <input type="number" placeholder="סכום" value={bonus.amount} onChange={e => handleBonusChange(bonus.id, 'amount', e.target.value)} className="w-20 p-2 border rounded-md" />
-                         </div>
-                         <div className="flex gap-2 items-center">
-                             <select value={bonus.bonusType} onChange={e => handleBonusChange(bonus.id, 'bonusType', e.target.value)} className="p-2 border rounded-md text-sm"><option value="count">לפי כמות</option><option value="amount">סכום ישיר</option></select>
-                             <button onClick={() => handleRemoveBonus(bonus.id)} className="p-2 text-slate-400 hover:text-red-500"><TrashIcon className="w-5 h-5"/></button>
-                         </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 mt-2 text-sm">
-                        <span className="text-slate-600 dark:text-slate-300">תנאי נוכחות:</span>
-                        <select 
-                            value={bonus.attendanceConditionType} 
-                            onChange={e => handleBonusChange(bonus.id, 'attendanceConditionType', e.target.value)}
-                            className="p-1 border rounded bg-white dark:bg-slate-800"
-                        >
-                            <option value="none">ללא תנאי (תמיד)</option>
-                            <option value="global">סף גלובלי ({settings.bonusAttendanceThresholdPercent}%)</option>
-                            <option value="custom">מותאם אישית (מדורג)</option>
-                        </select>
-                    </div>
-
-                    {bonus.attendanceConditionType === 'custom' && (
-                        <div className="mt-2 p-2 bg-slate-100 dark:bg-slate-800 rounded animate-fade-in text-sm">
-                             <div className="mb-2 font-medium text-xs text-slate-500">מדרגות בונוס לפי נוכחות:</div>
-                             {(bonus.customConditions || []).map((cond, idx) => (
-                                 <div key={idx} className="flex items-center gap-2 mb-2">
-                                     <span>אם נוכחות &ge;</span>
-                                     <input 
-                                         type="number" 
-                                         value={cond.threshold} 
-                                         onChange={e => handleUpdateBonusCondition(bonus.id, idx, 'threshold', e.target.value)} 
-                                         className="w-16 p-1 border rounded text-center" 
-                                         placeholder="%"
-                                     />
-                                     <span>% - קבל</span>
-                                     <input 
-                                         type="number" 
-                                         value={cond.percent} 
-                                         onChange={e => handleUpdateBonusCondition(bonus.id, idx, 'percent', e.target.value)} 
-                                         className="w-16 p-1 border rounded text-center"
-                                         placeholder="%"
-                                     />
-                                     <span>% מהבונוס</span>
-                                     <button onClick={() => handleRemoveBonusCondition(bonus.id, idx)} className="text-red-400 hover:text-red-600 px-2">×</button>
-                                 </div>
-                             ))}
-                             <button onClick={() => handleAddBonusCondition(bonus.id)} className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold">+ הוסף מדרגה</button>
-                        </div>
-                    )}
-                </div>
-            ))}
-            <button onClick={handleAddBonus} className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed rounded-md text-sm hover:bg-slate-100"><PlusIcon className="w-5 h-5"/> הוסף בונוס/תוספת</button>
+            <div>
+                <label className="block text-sm font-medium flex items-center mb-1">
+                    {t('full_stipend')}
+                    <HelpTooltip text={t('help_full_stipend')} />
+                </label>
+                <input type="number" value={settings.baseStipend} onChange={e => handleSettingsChange('baseStipend', Number(e.target.value))} className="w-full p-2 border rounded-md bg-white dark:bg-slate-700 dark:border-slate-600" />
+            </div>
+            <div>
+                <label className="block text-sm font-medium flex items-center mb-1">
+                    {t('threshold_full')}
+                    <HelpTooltip text={t('help_threshold')} />
+                </label>
+                <input type="number" value={settings.deductions.attendanceThresholdPercent} onChange={e => handleNestedChange('deductions', 'attendanceThresholdPercent', Number(e.target.value))} className="w-full p-2 border rounded-md bg-white dark:bg-slate-700 dark:border-slate-600" />
+            </div>
+            {/* Added inputs for High and Low Deduction Rates */}
+            <div>
+                <label className="block text-sm font-medium flex items-center mb-1">
+                    {t('high_deduction')}
+                    <HelpTooltip text={t('help_deduction_rate')} />
+                </label>
+                <input type="number" value={settings.deductions.highRate} onChange={e => handleNestedChange('deductions', 'highRate', Number(e.target.value))} className="w-full p-2 border rounded-md bg-white dark:bg-slate-700 dark:border-slate-600" />
+            </div>
+             <div>
+                <label className="block text-sm font-medium flex items-center mb-1">
+                    {t('low_deduction')}
+                    <HelpTooltip text={t('help_deduction_rate')} />
+                </label>
+                <input type="number" value={settings.deductions.lowRate} onChange={e => handleNestedChange('deductions', 'lowRate', Number(e.target.value))} className="w-full p-2 border rounded-md bg-white dark:bg-slate-700 dark:border-slate-600" />
+            </div>
         </div>
       </fieldset>
-      
+
       <fieldset className="p-4 border rounded-md">
-        <legend className="px-2 font-medium">הגדרות מתקדמות</legend>
-         <div className="mt-2">
-            <label className="block text-sm font-medium">עיגול סכום סופי</label>
-            <select value={settings.rounding} onChange={e => handleSettingsChange('rounding', e.target.value)} className="mt-1 w-full p-2 border rounded-md"><option value="none">ללא</option><option value="upTo10">עגל למעלה ל-10 הקרוב</option></select>
-         </div>
-         
-         <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
-            <label className="block text-sm font-medium mb-2">ניהול הגדרות</label>
-            <div className="flex gap-4">
-                <button 
-                    onClick={handleExportSettings}
-                    className="flex-1 flex items-center justify-center gap-2 py-2 px-4 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-sm font-medium transition-colors"
-                >
-                    <DownloadIcon className="w-4 h-4" />
-                    ייצוא הגדרות (JSON)
-                </button>
-                <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex-1 flex items-center justify-center gap-2 py-2 px-4 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-sm font-medium transition-colors"
-                >
-                    <UploadIcon className="w-4 h-4" />
-                    ייבוא הגדרות
-                </button>
-                <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleImportSettings} 
-                    className="hidden" 
-                    accept=".json" 
-                />
-            </div>
-         </div>
+        <legend className="px-2 font-medium">{t('sedarim')}</legend>
+        <div className="space-y-4">
+            {settings.sedarim.map(seder => (
+                <div key={seder.id} className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg border dark:border-slate-600">
+                    <div className="flex justify-between items-center mb-3">
+                        <input type="text" value={seder.name} onChange={e => handleSederChange(seder.id, 'name', e.target.value)} className="font-semibold bg-transparent border-0 border-b-2 dark:border-slate-600 focus:ring-0 px-0" />
+                        <button onClick={() => setSettings(p => ({...p, sedarim: p.sedarim.filter(s => s.id !== seder.id)}))}><TrashIcon className="w-5 h-5 text-red-400"/></button>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+                        <div>
+                            <label className="flex items-center mb-1">{t('hours')}<HelpTooltip text={t('help_seder_times')} /></label>
+                            <div className="flex gap-1">
+                                <input type="text" value={seder.startTime} onChange={e => handleSederChange(seder.id, 'startTime', e.target.value)} className="w-full p-1 border rounded text-center dark:bg-slate-800 dark:border-slate-600" placeholder="09:00" />
+                                <span className="self-center">-</span>
+                                <input type="text" value={seder.endTime} onChange={e => handleSederChange(seder.id, 'endTime', e.target.value)} className="w-full p-1 border rounded text-center dark:bg-slate-800 dark:border-slate-600" placeholder="13:00" />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="flex items-center mb-1">{t('stipend_pct_half_day')}<HelpTooltip text={t('help_partial_pct')} /></label>
+                            <input type="number" value={seder.partialStipendPercentage} onChange={e => handleSederChange(seder.id, 'partialStipendPercentage', Number(e.target.value))} className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600" />
+                        </div>
+                        <div>
+                            <label className="flex items-center mb-1">סף יציאה (דק')<HelpTooltip text={t('help_early_exit')} /></label>
+                            <input type="number" value={seder.earlyExitToleranceMinutes} onChange={e => handleSederChange(seder.id, 'earlyExitToleranceMinutes', Number(e.target.value))} className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600" />
+                        </div>
+                        <div>
+                            <label className="flex items-center mb-1">{t('late_threshold_min')}<HelpTooltip text={t('help_punctuality_late')} /></label>
+                            <input type="number" value={seder.punctualityLateThresholdMinutes} onChange={e => handleSederChange(seder.id, 'punctualityLateThresholdMinutes', Number(e.target.value))} className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600" />
+                        </div>
+                        <div>
+                            <label className="flex items-center mb-1">בונוס נוכחות<HelpTooltip text={t('help_punctuality')} /></label>
+                            <input type="number" value={seder.punctualityBonusAmount} onChange={e => handleSederChange(seder.id, 'punctualityBonusAmount', Number(e.target.value))} className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600" />
+                        </div>
+                    </div>
+                    
+                    <div className="mt-3 bg-white dark:bg-slate-800 p-2 rounded border dark:border-slate-600">
+                        <div className="flex justify-between items-center mb-1">
+                            <span className="text-xs font-bold flex items-center">מדרגות ביטול בונוס (לפי חיסורים/שעות)<HelpTooltip text={t('help_punctuality_tiers')} /></span>
+                            <button onClick={() => handleAddSederTier(seder.id)} className="text-[10px] bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded text-indigo-600 dark:text-indigo-400">+ מדרגה</button>
+                        </div>
+                        <div className="space-y-1">
+                            {(seder.punctualityTiers || []).map((tier, idx) => (
+                                <div key={idx} className="flex gap-2 items-center text-[10px]">
+                                    <span>עד</span>
+                                    <input type="number" value={tier.maxFailures} onChange={e => handleSederChange(seder.id, 'punctualityTiers', seder.punctualityTiers?.map((v, i) => i === idx ? {...v, maxFailures: Number(e.target.value)} : v))} className="w-10 p-0.5 border rounded dark:bg-slate-700 dark:border-slate-500" />
+                                    <span>חיסורים → בונוס:</span>
+                                    <input type="number" value={tier.amount} onChange={e => handleSederChange(seder.id, 'punctualityTiers', seder.punctualityTiers?.map((v, i) => i === idx ? {...v, amount: Number(e.target.value)} : v))} className="w-10 p-0.5 border rounded dark:bg-slate-700 dark:border-slate-500" />
+                                    <span>₪</span>
+                                    <button onClick={() => handleRemoveSederTier(seder.id, idx)} className="ml-auto text-slate-400 hover:text-red-500 transition-colors">
+                                        <TrashIcon className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            ))}
+            <button onClick={() => handleSederChange(Date.now(), 'id', Date.now())} className="w-full py-2 border-2 border-dashed rounded text-sm hover:bg-slate-100 dark:hover:bg-slate-700 dark:border-slate-600 text-slate-500">+ הוסף סדר</button>
+        </div>
+      </fieldset>
+
+      <fieldset className="p-4 border rounded-md">
+        <legend className="px-2 font-medium">{t('bonuses')}</legend>
+        <div className="space-y-3">
+            {settings.generalBonuses.map(bonus => (
+                <div key={bonus.id} className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg border dark:border-slate-600">
+                    <div className="flex gap-2 mb-2 items-center">
+                        <div className="flex-grow">
+                            <label className="text-[10px] text-slate-500 dark:text-slate-400 block flex items-center">{t('bonus_name_ph')} <HelpTooltip text={t('help_bonus_name')} /></label>
+                            <input type="text" value={bonus.name} onChange={e => setSettings(p => ({...p, generalBonuses: p.generalBonuses.map(b => b.id === bonus.id ? {...b, name: e.target.value} : b)}))} className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600" />
+                        </div>
+                        <div className="w-24">
+                            <label className="text-[10px] text-slate-500 dark:text-slate-400 block flex items-center">{t('amount_ph')} <HelpTooltip text={t('help_bonus_amount')} /></label>
+                            <input type="number" value={bonus.amount} onChange={e => setSettings(p => ({...p, generalBonuses: p.generalBonuses.map(b => b.id === bonus.id ? {...b, amount: Number(e.target.value)} : b)}))} className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600" />
+                        </div>
+                        <button onClick={() => setSettings(p => ({...p, generalBonuses: p.generalBonuses.filter(b => b.id !== bonus.id)}))} className="mt-4 p-1 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"><TrashIcon className="w-4 h-4 text-red-400"/></button>
+                    </div>
+                    <div className="bg-white dark:bg-slate-800 p-2 rounded border dark:border-slate-600 text-[10px]">
+                        <div className="flex justify-between items-center mb-1">
+                            <span className="flex items-center">תנאי זכאות (לפי % נוכחות חודשי)<HelpTooltip text={t('help_bonus_attendance')} /></span>
+                            <button onClick={() => handleAddBonusTier(bonus.id)} className="bg-indigo-50 dark:bg-indigo-900/30 px-2 rounded text-indigo-600 dark:text-indigo-400">+ תנאי</button>
+                        </div>
+                        {bonus.customConditions?.map((cond, idx) => (
+                            <div key={idx} className="flex gap-2 items-center mt-1">
+                                <span>נוכחות {'>'}=</span>
+                                <input type="number" value={cond.threshold} onChange={e => setSettings(p => ({...p, generalBonuses: p.generalBonuses.map(b => b.id === bonus.id ? {...b, customConditions: b.customConditions?.map((v, i) => i === idx ? {...v, threshold: Number(e.target.value)} : v)} : b)}))} className="w-10 p-0.5 border rounded dark:bg-slate-700 dark:border-slate-500" />
+                                <span>% → קבל</span>
+                                <input type="number" value={cond.percent} onChange={e => setSettings(p => ({...p, generalBonuses: p.generalBonuses.map(b => b.id === bonus.id ? {...b, customConditions: b.customConditions?.map((v, i) => i === idx ? {...v, percent: Number(e.target.value)} : v)} : b)}))} className="w-10 p-0.5 border rounded dark:bg-slate-700 dark:border-slate-500" />
+                                <span>%</span>
+                                <button onClick={() => handleRemoveBonusTier(bonus.id, idx)} className="ml-auto text-slate-400 hover:text-red-500 transition-colors">
+                                    <TrashIcon className="w-3 h-3" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ))}
+            <button onClick={() => setSettings(p => ({...p, generalBonuses: [...p.generalBonuses, {id: Date.now(), name: 'בונוס חדש', amount: 100, bonusType: 'count', subjectToAttendanceThreshold: false, attendanceConditionType: 'custom', customConditions: []}]}))} className="w-full py-2 border-2 border-dashed rounded text-sm hover:bg-slate-100 dark:hover:bg-slate-700 dark:border-slate-600 text-slate-500">+ הוסף בונוס/מבחן</button>
+        </div>
       </fieldset>
     </div>
   );
 
   return (
     <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-6 w-full max-w-4xl mx-auto">
-      <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-200 dark:border-slate-700">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" title="חזרה">
-            <BackIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" />
-          </button>
-          <h2 className="text-2xl font-semibold">הגדרות מלגה</h2>
-        </div>
-        <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
-          <button
-            onClick={() => setMode('manual')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${mode === 'manual' ? 'bg-white dark:bg-slate-600 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
-          >
-            עריכה ידנית
-          </button>
-          <button
-            onClick={() => setMode('ai')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${mode === 'ai' ? 'bg-white dark:bg-slate-600 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
-          >
-            <SparklesIcon className="w-4 h-4" />
-            עוזר AI
-          </button>
-        </div>
+      <div className="flex justify-between items-center mb-6 pb-4 border-b dark:border-slate-700">
+        <div className="flex items-center gap-3"><button onClick={onBack} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"><BackIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" /></button><h2 className="text-2xl font-semibold text-slate-900 dark:text-white">{t('settings_title')}</h2></div>
       </div>
-
-      {error && (
-        <div className="mb-6 bg-red-100 dark:bg-red-900/30 border-r-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg">
-          <p className="font-bold">שגיאה</p>
-          <p>{error}</p>
-        </div>
-      )}
-
-      {mode === 'ai' ? renderAiMode() : renderManualMode()}
-
-      <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-4">
-        <button onClick={onBack} className="px-6 py-2 border border-slate-300 dark:border-slate-600 rounded-md text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-          ביטול
-        </button>
-        <button 
-          onClick={handleSave} 
-          disabled={isSaveDisabled}
-          className="px-6 py-2 bg-indigo-600 text-white rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-2"
-        >
-          {isSaveDisabled ? 'יש לתקן שגיאות' : 'שמור שינויים'}
-        </button>
+      {renderManualMode()}
+      <div className="mt-8 pt-6 border-t dark:border-slate-700 flex justify-end gap-4">
+        <button onClick={onBack} className="px-6 py-2 border rounded-md hover:bg-slate-50 dark:hover:bg-slate-700 dark:border-slate-600 dark:text-slate-200">{t('cancel')}</button>
+        <button onClick={() => onSave(settings)} className="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 font-medium shadow-md">{t('save_changes')}</button>
       </div>
     </div>
   );

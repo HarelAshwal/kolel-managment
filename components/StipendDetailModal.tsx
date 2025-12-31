@@ -7,6 +7,7 @@ import { DownloadIcon } from './icons/DownloadIcon';
 import { CloseIcon } from './icons/CloseIcon';
 import { AdjustmentsIcon } from './icons/AdjustmentsIcon';
 import { ChevronIcon } from './icons/ChevronIcon';
+import { useLanguage } from '../contexts/LanguageContext';
 
 
 const StipendDetailModal: React.FC<{
@@ -18,6 +19,7 @@ const StipendDetailModal: React.FC<{
   onUpdateScholarResult: (updatedResult: StipendResult) => void;
   onUpdateSettings: (settings: StipendSettings) => void;
 }> = ({ isOpen, onClose, result, kollelDetails, monthYear, onUpdateScholarResult, onUpdateSettings }) => {
+  const { t } = useLanguage();
   const [isExceptionsOpen, setIsExceptionsOpen] = useState(false);
 
   if (!isOpen || !result) return null;
@@ -114,63 +116,72 @@ const StipendDetailModal: React.FC<{
 
   const getCalculationSteps = () => {
     const steps = [];
-    steps.push({ label: 'מלגת בסיס', value: `₪${(result.baseStipendUsed || settings.baseStipend).toFixed(2)}`, color: 'text-green-600 dark:text-green-400', sign: '+' });
+    steps.push({ 
+      label: t('base_stipend_label'), 
+      value: `₪${Number(result.baseStipendUsed || settings.baseStipend || 0).toFixed(2)}`, 
+      color: 'text-green-600 dark:text-green-400', 
+      sign: '+' 
+    });
     
-    steps.push({ label: '--- חישוב נוכחות ---', value: '' });
+    steps.push({ label: t('attendance_calc_header'), value: '' });
     if (result.workingDaysInMonth !== undefined && dailyRequiredHours > 0) {
-      steps.push({ label: 'פירוט שעות נדרשות', value: `${result.workingDaysInMonth} ימים * ${dailyRequiredHours.toFixed(2)} ש'` });
+      steps.push({ label: t('required_hours_breakdown'), value: `${result.workingDaysInMonth} ${t('days')} * ${dailyRequiredHours.toFixed(2)} ${t('hours')}` });
     }
-    steps.push({ label: 'סה"כ שעות נדרשות', value: `${(result.requiredHours || 0).toFixed(2)} ש'` });
-    steps.push({ label: 'סה"כ שעות בפועל', value: `${(result.totalHours || 0).toFixed(2)} ש'` });
-    steps.push({ label: 'אחוז נוכחות', value: `${(result.attendancePercentage || 0).toFixed(1)}%`, color: 'font-bold' });
+    steps.push({ label: t('total_required_hours'), value: `${(result.requiredHours || 0).toFixed(2)} ${t('hours')}` });
+    steps.push({ label: t('total_actual_hours'), value: `${(result.totalHours || 0).toFixed(2)} ${t('hours')}` });
+    steps.push({ label: t('attendance_percent'), value: `${(result.attendancePercentage || 0).toFixed(1)}%`, color: 'font-bold' });
 
     if (result.deductionDetails && result.deductionDetails.length > 0) {
-        steps.push({ label: '--- ניכויים לפי סדר ---', value: '' });
+        steps.push({ label: t('deductions_header'), value: '' });
         result.deductionDetails.forEach(detail => {
             steps.push({
-                label: `חיסור (${detail.sederName})`,
-                value: `${detail.deficit.toFixed(2)} ש' @ ₪${detail.rate.toFixed(2)}`,
+                label: `${t('deduction_label')} (${detail.sederName})`,
+                value: `${detail.deficit.toFixed(2)} ${t('hours')} @ ₪${detail.rate.toFixed(2)}`,
             });
         });
-        steps.push({ label: 'סה"כ ניכוי', value: `₪${(result.totalDeduction || 0).toFixed(2)}`, color: 'text-red-600 dark:text-red-400', sign: '-' });
+        steps.push({ label: t('total_deduction_label'), value: `₪${(result.totalDeduction || 0).toFixed(2)}`, color: 'text-red-600 dark:text-red-400', sign: '-' });
     }
 
     if ((result.totalApprovedAbsenceHours && result.totalApprovedAbsenceHours > 0) || (result.totalApprovedLatenessCount && result.totalApprovedLatenessCount > 0)) {
-        steps.push({ label: '--- אישורים ---', value: '' });
+        steps.push({ label: t('approvals_header'), value: '' });
         if (result.totalApprovedAbsenceHours && result.totalApprovedAbsenceHours > 0) {
             steps.push({
-                label: 'שעות חיסור שאושרו',
-                value: `${result.totalApprovedAbsenceHours.toFixed(2)} ש'`,
+                label: t('approved_absence_hours'),
+                value: `${result.totalApprovedAbsenceHours.toFixed(2)} ${t('hours')}`,
                 color: 'text-slate-500 dark:text-slate-400',
             });
         }
         if (result.totalApprovedLatenessCount && result.totalApprovedLatenessCount > 0) {
             steps.push({
-                label: 'איחורים שאושרו',
-                value: `${result.totalApprovedLatenessCount} מקרים`,
+                label: t('approved_lateness'),
+                value: `${result.totalApprovedLatenessCount} ${t('occurrences')}`,
                 color: 'text-slate-500 dark:text-slate-400',
             });
         }
     }
     
     if (result.bonusDetails && result.bonusDetails.length > 0) {
-      steps.push({ label: '--- בונוסים ---', value: '' });
+      steps.push({ label: t('bonuses_header'), value: '' });
       result.bonusDetails.forEach(bonus => {
         steps.push({
           label: `${bonus.name} (${bonus.count})`,
           value: `₪${bonus.totalAmount.toFixed(2)}`,
           color: 'text-blue-600 dark:text-blue-400',
-          sign: '+'
+          sign: '+',
+          failures: bonus.failures
         });
       });
     }
 
-    const calculatedStipend = (result.baseStipendUsed || settings.baseStipend) - (result.totalDeduction || 0) + (result.bonusDetails?.reduce((sum, b) => sum + b.totalAmount, 0) || 0);
+    const baseAmount = Number(result.baseStipendUsed || settings.baseStipend || 0);
+    const deductionAmount = Number(result.totalDeduction || 0);
+    const bonusAmount = result.bonusDetails?.reduce((sum, b) => sum + Number(b.totalAmount || 0), 0) || 0;
+    const calculatedStipend = baseAmount - deductionAmount + bonusAmount;
 
     if (settings.rounding === 'upTo10' && Math.ceil(calculatedStipend / 10) * 10 !== calculatedStipend) {
-        steps.push({ label: '--- עיגול ---', value: '' });
-        steps.push({ label: 'סכום לפני עיגול', value: `₪${calculatedStipend.toFixed(2)}` });
-        steps.push({ label: 'עיגול ל-10 הקרוב', value: `₪${(Math.ceil(calculatedStipend / 10) * 10 - calculatedStipend).toFixed(2)}`, color: 'text-purple-600 dark:text-purple-400', sign: '+' });
+        steps.push({ label: t('rounding_header'), value: '' });
+        steps.push({ label: t('pre_round_sum'), value: `₪${calculatedStipend.toFixed(2)}` });
+        steps.push({ label: t('round_to_10'), value: `₪${(Math.ceil(calculatedStipend / 10) * 10 - calculatedStipend).toFixed(2)}`, color: 'text-purple-600 dark:text-purple-400', sign: '+' });
     }
 
     return steps;
@@ -181,8 +192,8 @@ const StipendDetailModal: React.FC<{
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <header className="flex justify-between items-center p-6 border-b border-slate-200 dark:border-slate-700">
           <div>
-            <h3 className="text-xl font-bold">פירוט חישוב מלגה</h3>
-            <p className="text-sm text-slate-500">עבור {result.name} - חודש {monthYear}</p>
+            <h3 className="text-xl font-bold">{t('modal_title')}</h3>
+            <p className="text-sm text-slate-500">{t('for_scholar')} {result.name} - {t('month')} {monthYear}</p>
           </div>
           <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700"><CloseIcon className="w-6 h-6" /></button>
         </header>
@@ -191,18 +202,26 @@ const StipendDetailModal: React.FC<{
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Left Column: Calculation Summary */}
               <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg h-fit">
-                <h4 className="font-semibold mb-3">סיכום החישוב</h4>
+                <h4 className="font-semibold mb-3">{t('calc_summary')}</h4>
                 <div className="space-y-2">
                   {getCalculationSteps().map((step, index) => (
-                    <div key={index} className="flex justify-between items-center text-sm">
-                      <span className="text-slate-600 dark:text-slate-300">{step.label}:</span>
-                      {step.value && <span className={`font-mono font-medium ${step.color || ''}`}>{step.sign && <span className="mr-1">{step.sign}</span>}{step.value}</span>}
+                    <div key={index} className="flex flex-col text-sm border-b border-slate-100 dark:border-slate-800 pb-1 last:border-0">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600 dark:text-slate-300">{step.label}:</span>
+                        {step.value && <span className={`font-mono font-medium ${step.color || ''}`}>{step.sign && <span className="mr-1">{step.sign}</span>}{step.value}</span>}
+                      </div>
+                      {/* Show failures/lates if present in step data */}
+                      {step.failures !== undefined && step.failures > 0 && (
+                          <div className="text-xs text-red-500 mt-0.5 mr-2">
+                             {t('bonus_failures')} {step.failures}
+                          </div>
+                      )}
                     </div>
                   ))}
                   <div className="border-t my-2 border-slate-200 dark:border-slate-700"></div>
                   <div className="flex justify-between items-center font-bold text-lg text-indigo-600 dark:text-indigo-400">
-                    <span>מלגה סופית:</span>
-                    <span className="font-mono">₪{result.stipend.toFixed(2)}</span>
+                    <span>{t('final_stipend')}</span>
+                    <span className="font-mono">₪{Number(result.stipend || 0).toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -214,14 +233,14 @@ const StipendDetailModal: React.FC<{
                       <button onClick={() => setIsExceptionsOpen(!isExceptionsOpen)} className="w-full flex justify-between items-center p-3 bg-slate-100 dark:bg-slate-700/50">
                           <div className="flex items-center gap-2 font-semibold">
                               <AdjustmentsIcon className="w-5 h-5 text-indigo-500" />
-                              <span>ניהול חריגות</span>
+                              <span>{t('exceptions_management')}</span>
                           </div>
                           <ChevronIcon className={`w-5 h-5 transition-transform ${isExceptionsOpen ? 'rotate-180' : ''}`} />
                       </button>
                       {isExceptionsOpen && <div className="p-4 space-y-4 animate-fade-in">
                           <div>
-                              <h5 className="font-semibold mb-2">סדרים קבועים לאברך</h5>
-                              <p className="text-xs text-slate-500 mb-2">קבע באילו סדרים האברך משתתף. החישוב יתבצע רק לפיהם. (הגדרה קבועה)</p>
+                              <h5 className="font-semibold mb-2">{t('fixed_sedarim')}</h5>
+                              <p className="text-xs text-slate-500 mb-2">{t('fixed_sedarim_desc')}</p>
                               <div className="flex flex-wrap gap-4">
                                   {settings.sedarim.map(seder => (
                                       <label key={seder.id} className="flex items-center gap-2 cursor-pointer">
@@ -241,13 +260,14 @@ const StipendDetailModal: React.FC<{
                   {/* Daily Details */}
                   <div>
                     <div className="flex justify-between items-center mb-3">
-                      <h4 className="font-semibold">פירוט יומי (לחודש זה)</h4>
-                      <button onClick={() => exportDetailsToCsv(result)} className="flex items-center gap-2 text-sm bg-blue-500 text-white font-semibold py-1.5 px-3 rounded-md hover:bg-blue-600"><DownloadIcon className="w-4 h-4" />ייצוא</button>
+                      <h4 className="font-semibold">{t('daily_details_month')}</h4>
+                      <button onClick={() => exportDetailsToCsv(result)} className="flex items-center gap-2 text-sm bg-blue-500 text-white font-semibold py-1.5 px-3 rounded-md hover:bg-blue-600"><DownloadIcon className="w-4 h-4" />{t('export')}</button>
                     </div>
                     {result.details && result.details.length > 0 ? (
                       <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
                         {(result.details as DailyDetail[]).map((detail, i) => {
-                            const dailyTotalHours = Object.values(detail.sederHours || {}).reduce((sum, h) => sum + h, 0);
+                            // Fix: Explicitly type sum and h in reduce and handle sederHours as potential null
+                            const dailyTotalHours = Object.values(detail.sederHours || {}).reduce((sum: number, h: number) => sum + h, 0);
                             
                             const isAbsent = detail.rawTime === 'נעדר';
                             
@@ -255,8 +275,9 @@ const StipendDetailModal: React.FC<{
                                 <div key={i} className={`p-3 rounded-lg text-sm ${isAbsent ? 'bg-red-50 dark:bg-red-900/20' : 'bg-slate-100 dark:bg-slate-700/50'}`}>
                                     <div className="flex justify-between items-center font-bold">
                                         <span>{detail.day}</span>
-                                        <span className={isAbsent ? 'text-red-600 dark:text-red-400' : ''}>{detail.rawTime || 'לא נכח'}</span>
-                                        <span className="font-mono">{dailyTotalHours > 0 ? `${dailyTotalHours.toFixed(2)} ש'` : '-'}</span>
+                                        <span className={isAbsent ? 'text-red-600 dark:text-red-400' : ''}>{detail.rawTime || t('absent')}</span>
+                                        {/* Fix: Explicitly cast dailyTotalHours to number to call toFixed */}
+                                        <span className="font-mono">{Number(dailyTotalHours) > 0 ? `${Number(dailyTotalHours).toFixed(2)} ${t('hours')}` : '-'}</span>
                                     </div>
                                     <div className="mt-2 space-y-1">
                                         {settings.sedarim.filter(s => assignedSedarim.includes(s.id)).map(seder => {
@@ -264,10 +285,10 @@ const StipendDetailModal: React.FC<{
                                             const isLate = seder.name.includes("א'") ? detail.isLateSederA : detail.isLateSederB;
                                             if (deficit > 0.1 || isLate) {
                                                 return <div key={seder.id} className="flex items-center justify-between text-xs bg-white dark:bg-slate-800 p-1.5 rounded">
-                                                    <span>{seder.name}: {isLate && <span className="text-amber-600">איחור</span>} {deficit > 0.1 && <span className="text-red-600">חיסור {deficit.toFixed(2)} ש'</span>}</span>
+                                                    <span>{seder.name}: {isLate && <span className="text-amber-600">{t('late')}</span>} {deficit > 0.1 && <span className="text-red-600">{t('deficit')} {deficit.toFixed(2)} {t('hours')}</span>}</span>
                                                     <div className="flex gap-2">
-                                                        {isLate && <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={detail.isLatenessApproved?.[seder.id]} onChange={e => handleApprovalChange(i, seder.id, 'lateness', e.target.checked)} className="h-3 w-3" /> אישור איחור</label>}
-                                                        {deficit > 0.1 && <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={detail.isAbsenceApproved?.[seder.id]} onChange={e => handleApprovalChange(i, seder.id, 'absence', e.target.checked)} className="h-3 w-3" /> אישור חיסור</label>}
+                                                        {isLate && <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={detail.isLatenessApproved?.[seder.id]} onChange={e => handleApprovalChange(i, seder.id, 'lateness', e.target.checked)} className="h-3 w-3" /> {t('approve_late')}</label>}
+                                                        {deficit > 0.1 && <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={detail.isAbsenceApproved?.[seder.id]} onChange={e => handleApprovalChange(i, seder.id, 'absence', e.target.checked)} className="h-3 w-3" /> {t('approve_absence')}</label>}
                                                     </div>
                                                 </div>
                                             }
@@ -278,14 +299,14 @@ const StipendDetailModal: React.FC<{
                             );
                         })}
                       </div>
-                    ) : <p className="text-center text-slate-500 py-4">אין פירוט יומי זמין.</p>}
+                    ) : <p className="text-center text-slate-500 py-4">{t('no_daily_details')}</p>}
                   </div>
               </div>
           </div>
         </main>
 
         <footer className="p-4 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-700 text-right">
-          <button onClick={onClose} className="py-2 px-6 border border-slate-300 dark:border-slate-600 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">סגור</button>
+          <button onClick={onClose} className="py-2 px-6 border border-slate-300 dark:border-slate-600 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">{t('close')}</button>
         </footer>
       </div>
     </div>

@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import type { MonthlyData, KollelDetails } from '../types';
 import { generateReport } from '../services/reporter';
@@ -9,6 +10,7 @@ import { LineChartIcon } from './icons/LineChartIcon';
 import { BarChartIcon } from './icons/BarChartIcon';
 import LineChart from './LineChart';
 import BarChart from './BarChart';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface ReportsProps {
   savedData: MonthlyData[];
@@ -17,6 +19,7 @@ interface ReportsProps {
 }
 
 const Reports: React.FC<ReportsProps> = ({ savedData, onBack, kollelDetails }) => {
+  const { t } = useLanguage();
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
 
   const { availableMonths, availableScholars } = useMemo(() => {
@@ -66,10 +69,10 @@ const Reports: React.FC<ReportsProps> = ({ savedData, onBack, kollelDetails }) =
     <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-6 w-full space-y-6">
       <div className="flex justify-between items-center pb-4 border-b border-slate-200 dark:border-slate-700">
         <div className="flex items-center gap-3">
-            <button onClick={onBack} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" title="חזרה">
+            <button onClick={onBack} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" title={t('back')}>
                 <BackIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" />
             </button>
-            <h2 className="text-2xl font-semibold">דוחות וניתוחים</h2>
+            <h2 className="text-2xl font-semibold">{t('reports_title')}</h2>
         </div>
         <button 
             onClick={() => exportReportToCsv(report.details)}
@@ -77,18 +80,18 @@ const Reports: React.FC<ReportsProps> = ({ savedData, onBack, kollelDetails }) =
             className="flex items-center gap-2 bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-green-700 focus:outline-none disabled:bg-green-400 disabled:cursor-not-allowed"
         >
             <DownloadIcon className="w-5 h-5" />
-            ייצוא ל-CSV
+            {t('export_csv_btn')}
         </button>
       </div>
 
       {/* Filters */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <fieldset className="p-4 border rounded-md border-slate-300 dark:border-slate-600">
-          <legend className="px-2 font-medium">סינון לפי חודש</legend>
+          <legend className="px-2 font-medium">{t('filter_month')}</legend>
           <div className="mt-2 space-y-2 max-h-48 overflow-y-auto pr-2">
             <div className="flex items-center">
                 <input type="checkbox" id="all-months" checked={isAllMonthsSelected} onChange={() => toggleAll(isAllMonthsSelected, availableMonths, setSelectedMonths)} className="h-4 w-4 rounded" />
-                <label htmlFor="all-months" className="mr-2 font-bold">בחר הכל</label>
+                <label htmlFor="all-months" className="mr-2 font-bold">{t('select_all')}</label>
             </div>
             {availableMonths.map(month => (
               <div key={month} className="flex items-center">
@@ -99,11 +102,11 @@ const Reports: React.FC<ReportsProps> = ({ savedData, onBack, kollelDetails }) =
           </div>
         </fieldset>
          <fieldset className="p-4 border rounded-md border-slate-300 dark:border-slate-600">
-          <legend className="px-2 font-medium">סינון לפי אברך</legend>
+          <legend className="px-2 font-medium">{t('filter_scholar')}</legend>
           <div className="mt-2 space-y-2 max-h-48 overflow-y-auto pr-2">
              <div className="flex items-center">
                 <input type="checkbox" id="all-scholars" checked={isAllScholarsSelected} onChange={() => toggleAll(isAllScholarsSelected, availableScholars, setSelectedScholars)} className="h-4 w-4 rounded" />
-                <label htmlFor="all-scholars" className="mr-2 font-bold">בחר הכל</label>
+                <label htmlFor="all-scholars" className="mr-2 font-bold">{t('select_all')}</label>
             </div>
             {availableScholars.map(scholar => (
               <div key={scholar} className="flex items-center">
@@ -119,32 +122,32 @@ const Reports: React.FC<ReportsProps> = ({ savedData, onBack, kollelDetails }) =
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
         <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg">
           <div className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">{report.summary.scholarCount}</div>
-          <div className="text-sm text-slate-500 dark:text-slate-400">אברכים</div>
+          <div className="text-sm text-slate-500 dark:text-slate-400">{t('scholars_count')}</div>
         </div>
         <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg">
           <div className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">{report.summary.totalHours.toFixed(1)}</div>
-          <div className="text-sm text-slate-500 dark:text-slate-400">שעות בסה"כ</div>
+          <div className="text-sm text-slate-500 dark:text-slate-400">{t('total_hours_sum')}</div>
         </div>
         <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg">
           <div className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">{report.summary.averageHoursPerScholar.toFixed(1)}</div>
-          <div className="text-sm text-slate-500 dark:text-slate-400">ממוצע לאברך</div>
+          <div className="text-sm text-slate-500 dark:text-slate-400">{t('avg_per_scholar')}</div>
         </div>
         <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg">
           <div className="flex items-center justify-center text-3xl font-bold text-indigo-600 dark:text-indigo-400">
             {report.summary.averageAttendancePercentage.toFixed(1)}<PercentIcon className="w-6 h-6 mr-1" />
           </div>
-          <div className="text-sm text-slate-500 dark:text-slate-400">אחוז נוכחות</div>
+          <div className="text-sm text-slate-500 dark:text-slate-400">{t('attendance_pct')}</div>
         </div>
         <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg">
           <div className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">{report.summary.monthCount}</div>
-          <div className="text-sm text-slate-500 dark:text-slate-400">חודשים</div>
+          <div className="text-sm text-slate-500 dark:text-slate-400">{t('months_count')}</div>
         </div>
       </div>
 
        {/* Timeline Chart */}
       <div className="p-4 border rounded-md border-slate-300 dark:border-slate-600">
         <div className="flex justify-between items-center mb-4">
-            <h3 className="font-semibold">ממוצע שעות לאורך זמן</h3>
+            <h3 className="font-semibold">{t('avg_hours_timeline')}</h3>
             <div className="flex items-center gap-1 bg-slate-200 dark:bg-slate-700 p-1 rounded-lg">
                 <button onClick={() => setChartType('line')} className={`p-1.5 rounded-md ${chartType === 'line' ? 'bg-white dark:bg-slate-600 shadow' : ''}`}>
                     <LineChartIcon className="w-5 h-5 text-slate-600 dark:text-slate-300" />
@@ -158,7 +161,7 @@ const Reports: React.FC<ReportsProps> = ({ savedData, onBack, kollelDetails }) =
           chartType === 'line' ? <LineChart data={report.timeline} /> : <BarChart data={report.timeline} />
         ) : (
           <div className="h-64 flex items-center justify-center">
-            <p className="text-center text-slate-500 dark:text-slate-400">יש לבחור לפחות שני חודשים כדי להציג גרף התקדמות.</p>
+            <p className="text-center text-slate-500 dark:text-slate-400">{t('chart_min_months')}</p>
           </div>
         )}
       </div>
@@ -166,7 +169,7 @@ const Reports: React.FC<ReportsProps> = ({ savedData, onBack, kollelDetails }) =
       {/* Bar Chart and Table */}
        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="p-4 border rounded-md border-slate-300 dark:border-slate-600">
-            <h3 className="font-semibold mb-4">סה"כ שעות לפי אברך</h3>
+            <h3 className="font-semibold mb-4">{t('hours_by_scholar')}</h3>
             <div className="space-y-2 text-sm max-h-96 overflow-y-auto pr-2">
                 {report.details.length > 0 ? report.details.map(d => (
                     <div key={d.name} className="flex items-center gap-2">
@@ -180,17 +183,17 @@ const Reports: React.FC<ReportsProps> = ({ savedData, onBack, kollelDetails }) =
                             </div>
                         </div>
                     </div>
-                )) : <p className="text-center text-slate-500 dark:text-slate-400 py-4">אין נתונים להצגה בסינון הנוכחי.</p>}
+                )) : <p className="text-center text-slate-500 dark:text-slate-400 py-4">{t('no_data_filter')}</p>}
             </div>
         </div>
         <div className="overflow-x-auto max-h-[28rem]">
             <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
                 <thead className="bg-slate-50 dark:bg-slate-700/50 sticky top-0">
                     <tr>
-                        <th className="px-4 py-3 text-right text-xs font-medium uppercase">אברך</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium uppercase">סה"כ שעות</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium uppercase">נוכחות</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium uppercase">ממוצע חודשי</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium uppercase">{t('col_scholar')}</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium uppercase">{t('col_total_hours')}</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium uppercase">{t('col_attendance')}</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium uppercase">{t('col_monthly_avg')}</th>
                     </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">

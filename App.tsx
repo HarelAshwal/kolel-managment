@@ -1,6 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import type { KollelDetails, StipendSettings } from './types';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import Login from './components/Login';
 import Header from './components/Header';
 import KollelSetup from './components/KollelSetup';
@@ -60,6 +62,7 @@ const defaultSettings: StipendSettings = {
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { t } = useLanguage();
   const [appState, setAppState] = useState<AppState>('SELECT_KOLLEL');
   const [kollels, setKollels] = useState<KollelDetails[]>([]);
   const [selectedKollel, setSelectedKollel] = useState<KollelDetails | null>(null);
@@ -117,7 +120,7 @@ const AppContent: React.FC = () => {
   };
 
   const handleDeleteKollel = async (kollelId: string) => {
-    if (window.confirm('האם אתה בטוח שברצונך למחוק את הכולל? לא ניתן לשחזר פעולה זו.')) {
+    if (window.confirm(t('delete_confirm'))) {
       try {
         await deleteKollel(kollelId);
         setKollels(prev => prev.filter(k => k.id !== kollelId));
@@ -221,7 +224,7 @@ const AppContent: React.FC = () => {
 
   const renderContent = () => {
     if (isLoading) {
-      return <div className="text-center text-lg animate-pulse">טוען...</div>;
+      return <div className="text-center text-lg animate-pulse">{t('loading')}</div>;
     }
 
     if (!isAuthenticated) {
@@ -229,7 +232,7 @@ const AppContent: React.FC = () => {
     }
 
     if (isKollelsLoading) {
-      return <div className="text-center text-lg animate-pulse">טוען נתונים...</div>;
+      return <div className="text-center text-lg animate-pulse">{t('loading')}</div>;
     }
     if (error) {
       return <div className="text-center text-red-500 bg-red-100 dark:bg-red-900/30 p-4 rounded-lg">{error}</div>;
@@ -280,7 +283,9 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <AppContent />
+      <LanguageProvider>
+        <AppContent />
+      </LanguageProvider>
     </AuthProvider>
   );
 };

@@ -7,7 +7,6 @@ import { getSavedData, saveMonthlyData, deleteMonthlyData } from '../services/ap
 import { generateAndDownloadTemplate } from '../services/templateGenerator';
 import AttendanceTable from './AttendanceTable';
 import Reports from './Reports';
-// Fix: Renamed component import to avoid name collision with the StipendSettings type.
 import StipendSettingsComponent from './StipendSettings';
 import { UploadIcon } from './icons/UploadIcon';
 import { SettingsIcon } from './icons/SettingsIcon';
@@ -19,6 +18,7 @@ import { TrashIcon } from './icons/TrashIcon';
 import { ChartIcon } from './icons/ChartIcon';
 import { CoinsIcon } from './icons/CoinsIcon';
 import { FileExcelIcon } from './icons/FileExcelIcon';
+import { useLanguage } from '../contexts/LanguageContext';
 
 
 interface DashboardProps {
@@ -30,6 +30,7 @@ interface DashboardProps {
 type DashboardView = 'CHOICE' | 'VIEW_SAVED' | 'SHOW_RESULTS' | 'REPORTS' | 'STIPEND_SETTINGS';
 
 const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, onUpdateSettings }) => {
+  const { t, dir } = useLanguage();
   const [view, setView] = useState<DashboardView>('CHOICE');
   const [stipendResults, setStipendResults] = useState<StipendResult[] | null>(null);
   const [monthYear, setMonthYear] = useState<string | null>(null);
@@ -57,7 +58,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
         setSavedData(data);
       } catch (e) {
         console.error("❌ Failed to load saved data", e);
-        setError("שגיאה בטעינת נתונים שמורים.");
+        setError(t('error'));
         setSavedData([]);
       } finally {
         console.log('🏁 Finished loading data, setting isDataLoading to false');
@@ -73,7 +74,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
     setMonthYear(null);
     setError('');
     setFileName('');
-  }, [kollelDetails]);
+  }, [kollelDetails, t]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -89,7 +90,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
     const isSupported = fileNameLower.endsWith('.xlsx') || fileNameLower.endsWith('.xls');
 
     if (!isSupported) {
-      setError('יש להעלות קובץ מסוג XLSX או XLS בלבד.');
+      setError(t('file_error'));
       setFileName('');
       setIsLoading(false);
       return;
@@ -101,7 +102,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
       try {
         const content = e.target?.result;
         if (!content) {
-          throw new Error('לא ניתן היה לקרוא את תוכן הקובץ.');
+          throw new Error('Could not read file content');
         }
 
         const { monthYear: newMonthYear, results } = parseXlsxAndCalculateStipends(content as ArrayBuffer, kollelDetails, file.name);
@@ -114,7 +115,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
         if (err instanceof Error) {
           setError(err.message);
         } else {
-          setError('אירעה שגיאה בעיבוד הקובץ.');
+          setError(t('error'));
         }
         setStipendResults(null);
         setMonthYear(null);
@@ -126,7 +127,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
     };
 
     reader.onerror = () => {
-      setError('שגיאה בקריאת הקובץ.');
+      setError(t('error'));
       setFileName('');
       setIsLoading(false);
     };
@@ -155,7 +156,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
       setSavedData(prev => [...prev, newData].sort((a, b) => b.monthYear.localeCompare(a.monthYear)));
     } catch (err) {
       console.error("Failed to save monthly data", err);
-      alert("שגיאה בשמירת נתוני החודש.");
+      alert(t('error'));
     }
   };
 
@@ -168,13 +169,13 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
   };
 
   const handleDeleteMonth = async (monthYearToDelete: string) => {
-    if (window.confirm(`האם אתה בטוח שברצונך למחוק את הנתונים עבור חודש ${monthYearToDelete}? לא ניתן לשחזר פעולה זו.`)) {
+    if (window.confirm(t('delete_month_confirm').replace('{0}', monthYearToDelete))) {
       try {
         await deleteMonthlyData(kollelDetails.id, monthYearToDelete);
         setSavedData(prev => prev.filter(d => d.monthYear !== monthYearToDelete));
       } catch (err) {
         console.error("Failed to delete monthly data", err);
-        alert("שגיאה במחיקת נתוני החודש.");
+        alert(t('error'));
       }
     }
   };
@@ -198,47 +199,47 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
 
   const renderChoiceView = () => {
     if (isDataLoading) {
-      return <div className="text-center text-lg animate-pulse p-8">טוען נתונים שמורים...</div>;
+      return <div className="text-center text-lg animate-pulse p-8">{t('loading')}</div>;
     }
     return (
       <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-8 text-center">
-        <h2 className="text-2xl font-semibold mb-6">אפשרויות ניהול</h2>
+        <h2 className="text-2xl font-semibold mb-6">{t('dashboard_title')}</h2>
         
         {/* Template Download Section */}
         <div className="mb-8 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-             <div className="text-right">
-                 <h3 className="font-bold text-blue-800 dark:text-blue-300">חדש במערכת?</h3>
-                 <p className="text-sm text-blue-600 dark:text-blue-400">הורד קובץ תבנית תואם לתוכנת <strong>קל מוסד / JBClock (APT)</strong>, מלא אותו, והעלה חזרה.</p>
+             <div className={`${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
+                 <h3 className="font-bold text-blue-800 dark:text-blue-300">{t('template_title')}</h3>
+                 <p className="text-sm text-blue-600 dark:text-blue-400">{t('template_desc')}</p>
              </div>
              <button 
                 onClick={generateAndDownloadTemplate}
                 className="flex items-center gap-2 bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700 px-4 py-2 rounded-md hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors shadow-sm font-medium whitespace-nowrap"
              >
                  <FileExcelIcon className="w-5 h-5" />
-                 הורד תבנית עבודה
+                 {t('download_template')}
              </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <button onClick={handleUploadClick} disabled={isLoading} className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 transform hover:scale-105">
             <UploadIcon className="w-12 h-12 text-indigo-500 mb-3" />
-            <span className="font-semibold text-slate-800 dark:text-slate-200">העלאת דוח</span>
-            <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">קובץ XLSX/XLS</span>
+            <span className="font-semibold text-slate-800 dark:text-slate-200">{t('upload_report')}</span>
+            <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('upload_report_sub')}</span>
           </button>
           <button onClick={() => setView('VIEW_SAVED')} disabled={savedData.length === 0} className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
             <HistoryIcon className="w-12 h-12 text-teal-500 mb-3" />
-            <span className="font-semibold text-slate-800 dark:text-slate-200">נתונים שמורים</span>
-            <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">{savedData.length} חודשים</span>
+            <span className="font-semibold text-slate-800 dark:text-slate-200">{t('saved_data')}</span>
+            <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">{savedData.length} {t('saved_months')}</span>
           </button>
           <button onClick={() => setView('REPORTS')} disabled={savedData.length === 0} className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
             <ChartIcon className="w-12 h-12 text-amber-500 mb-3" />
-            <span className="font-semibold text-slate-800 dark:text-slate-200">הפקת דוחות</span>
-            <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">ניתוח נתונים</span>
+            <span className="font-semibold text-slate-800 dark:text-slate-200">{t('reports')}</span>
+            <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('reports_sub')}</span>
           </button>
           <button onClick={() => setView('STIPEND_SETTINGS')} className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 transform hover:scale-105">
             <CoinsIcon className="w-12 h-12 text-lime-500 mb-3" />
-            <span className="font-semibold text-slate-800 dark:text-slate-200">הגדרות מלגה</span>
-            <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">סכומים ובונוסים</span>
+            <span className="font-semibold text-slate-800 dark:text-slate-200">{t('settings')}</span>
+            <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('settings_sub')}</span>
           </button>
         </div>
         <input
@@ -249,10 +250,10 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
           className="hidden"
           disabled={isLoading}
         />
-        {isLoading && <p className="mt-6 text-sm text-indigo-600 dark:text-indigo-400 animate-pulse">מעבד את <span className="font-medium">{fileName}</span>...</p>}
+        {isLoading && <p className="mt-6 text-sm text-indigo-600 dark:text-indigo-400 animate-pulse">{t('processing')} <span className="font-medium">{fileName}</span>...</p>}
         {error && (
-          <div className="mt-6 bg-red-100 dark:bg-red-900/30 border-r-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg text-right" role="alert">
-            <p className="font-bold">שגיאה</p>
+          <div className={`mt-6 bg-red-100 dark:bg-red-900/30 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg ${dir === 'rtl' ? 'text-right border-r-4' : 'text-left border-l-4'}`} role="alert">
+            <p className="font-bold">{t('error')}</p>
             <p>{error}</p>
           </div>
         )}
@@ -262,21 +263,21 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
   const renderSavedView = () => (
     <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-8 w-full max-w-2xl">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-semibold">טעינת נתונים שמורים</h2>
-        <button onClick={resetToChoice} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" title="חזרה">
-          <BackIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" />
+        <h2 className="text-2xl font-semibold">{t('load_saved_data')}</h2>
+        <button onClick={resetToChoice} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" title={t('cancel')}>
+          <BackIcon className={`w-6 h-6 text-slate-600 dark:text-slate-300 ${dir === 'ltr' ? 'rotate-180' : ''}`} />
         </button>
       </div>
       <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
         {savedData.map(data => (
           <div key={data.monthYear} className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg flex items-center justify-between gap-4">
-            <span className="font-bold text-slate-800 dark:text-slate-100">חודש {data.monthYear}</span>
+            <span className="font-bold text-slate-800 dark:text-slate-100">{t('month')} {data.monthYear}</span>
             <div className="flex items-center gap-2">
-              <button onClick={() => handleDeleteMonth(data.monthYear)} className="p-2 text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors" title="מחק נתונים">
+              <button onClick={() => handleDeleteMonth(data.monthYear)} className="p-2 text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors" title={t('delete')}>
                 <TrashIcon className="w-5 h-5" />
               </button>
               <button onClick={() => handleLoadMonth(data)} className="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg shadow-sm hover:bg-indigo-700">
-                טעינה
+                {t('load_btn')}
               </button>
             </div>
           </div>
@@ -288,14 +289,14 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
   const renderResultsView = () => (
     <div className="w-full">
       {fileName && <div className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 p-4 rounded-lg mb-6 text-center">
-        הקובץ <span className="font-medium">{fileName}</span> עובד בהצלחה.
+        {fileName} : {t('success')}
       </div>}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
         <div className="flex items-center gap-3">
-          <button onClick={resetToChoice} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" title="חזרה">
-            <BackIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" />
+          <button onClick={resetToChoice} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" title={t('cancel')}>
+            <BackIcon className={`w-6 h-6 text-slate-600 dark:text-slate-300 ${dir === 'ltr' ? 'rotate-180' : ''}`} />
           </button>
-          <h2 className="text-2xl font-semibold">תוצאות עבור חודש {monthYear}</h2>
+          <h2 className="text-2xl font-semibold">{t('results_for')} {monthYear}</h2>
         </div>
         <div className="flex items-center gap-2 self-end sm:self-center">
           <button
@@ -304,14 +305,14 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
             className="flex items-center gap-2 bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-300 disabled:bg-blue-400 disabled:cursor-not-allowed"
           >
             <SaveIcon className="w-5 h-5" />
-            {isCurrentMonthSaved ? 'הנתונים נשמרו' : 'שמור נתוני חודש'}
+            {isCurrentMonthSaved ? t('data_saved') : t('save_month')}
           </button>
           <button
             onClick={handleExportSummary}
             className="flex items-center gap-2 bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-300"
           >
             <DownloadIcon className="w-5 h-5" />
-            ייצוא דוח כללי
+            {t('export_csv')}
           </button>
         </div>
       </div>
@@ -330,7 +331,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
       initialSettings={kollelDetails.settings}
       onSave={(newSettings) => {
         onUpdateSettings(newSettings);
-        alert('ההגדרות נשמרו בהצלחה!');
+        alert(t('success'));
         setView('CHOICE');
       }}
       onBack={resetToChoice}
@@ -352,12 +353,12 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
       <header className="flex items-center justify-between pb-4 border-b-2 border-slate-200 dark:border-slate-700">
         <div>
           <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">{kollelDetails.name}</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">מערכת לחישוב מלגות</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">{t('app_subtitle')}</p>
         </div>
         <div className="flex items-center gap-4">
-          <button onClick={onSwitchKollel} className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" title="ניהול כוללים">
+          <button onClick={onSwitchKollel} className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" title={t('manage_kollels')}>
             <SettingsIcon className="w-6 h-6 text-slate-600 dark:text-slate-300" />
-            <span className="hidden sm:inline text-sm font-medium">ניהול כוללים</span>
+            <span className="hidden sm:inline text-sm font-medium">{t('manage_kollels')}</span>
           </button>
         </div>
       </header>

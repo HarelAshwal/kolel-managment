@@ -1,7 +1,9 @@
+
 import React, { useState } from 'react';
 import type { StipendResult, KollelDetails, StipendSettings } from '../types';
 import StipendDetailModal from './StipendDetailModal';
 import { InfoIcon } from './icons/InfoIcon';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface AttendanceTableProps {
   results: StipendResult[];
@@ -12,6 +14,7 @@ interface AttendanceTableProps {
 }
 
 const AttendanceTable: React.FC<AttendanceTableProps> = ({ results, kollelDetails, monthYear, onUpdateScholarResult, onUpdateSettings }) => {
+  const { t } = useLanguage();
   const totalStipend = results.reduce((sum, result) => sum + result.stipend, 0);
   const [selectedScholarName, setSelectedScholarName] = useState<string | null>(null);
 
@@ -24,19 +27,19 @@ const AttendanceTable: React.FC<AttendanceTableProps> = ({ results, kollelDetail
   return (
     <>
       <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl overflow-hidden">
-          <h3 className="text-2xl font-semibold p-6 text-slate-900 dark:text-white">סיכום מלגות</h3>
+          <h3 className="text-2xl font-semibold p-6 text-slate-900 dark:text-white">{t('attendance_table_title')}</h3>
           <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
                   <thead className="bg-slate-50 dark:bg-slate-700/50">
                   <tr>
                       <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
-                      שם האברך
+                      {t('table_scholar')}
                       </th>
                       <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
-                      סה"כ שעות לימוד
+                      {t('table_hours')}
                       </th>
                       <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
-                      מלגה לתשלום
+                      {t('table_stipend')}
                       </th>
                   </tr>
                   </thead>
@@ -48,7 +51,7 @@ const AttendanceTable: React.FC<AttendanceTableProps> = ({ results, kollelDetail
                         className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer group"
                         tabIndex={0}
                         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleRowClick(result)}
-                        aria-label={`פרטים עבור ${result.name}`}
+                        aria-label={`${t('for_scholar')} ${result.name}`}
                         role="button"
                       >
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-white">
@@ -68,7 +71,7 @@ const AttendanceTable: React.FC<AttendanceTableProps> = ({ results, kollelDetail
                   </tbody>
                   <tfoot className="bg-slate-100 dark:bg-slate-900/50">
                       <tr>
-                          <td colSpan={2} className="px-6 py-4 text-left text-base font-bold text-slate-700 dark:text-slate-200">סה"כ לתשלום</td>
+                          <td colSpan={2} className="px-6 py-4 text-left text-base font-bold text-slate-700 dark:text-slate-200">{t('total_payment')}</td>
                           <td className="px-6 py-4 text-right text-base font-bold text-indigo-600 dark:text-indigo-400">
                               {`₪${totalStipend.toFixed(2)}`}
                           </td>

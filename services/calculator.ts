@@ -8,10 +8,8 @@ const timeToDecimal = (timeStr: string): number => {
 };
 
 const getDayOfWeek = (dayInput: string, monthYearContext?: string | null): number => {
-    // Returns 0 (Sun) to 6 (Sat), or -1 if unknown
     try {
         if (dayInput.includes('/')) {
-            // Assume DD/MM/YYYY
             const parts = dayInput.split('/');
             if (parts.length === 3) {
                  let year = parseInt(parts[2]);
@@ -19,13 +17,11 @@ const getDayOfWeek = (dayInput: string, monthYearContext?: string | null): numbe
                  return new Date(year, parseInt(parts[1]) - 1, parseInt(parts[0])).getDay();
             }
         }
-        
         if (monthYearContext) {
              const parts = monthYearContext.split('/');
              if (parts.length >= 2) {
                  let year = parseInt(parts[1]);
                  if (year < 100) year += 2000;
-                 // dayInput is just day number
                  return new Date(year, parseInt(parts[0]) - 1, parseInt(dayInput)).getDay();
              }
         }
@@ -40,256 +36,212 @@ export const calculateStipendForScholar = (
   monthYear?: string | null
 ): StipendResult => {
     const { name, details, bonusData } = scholarData;
-    
-    // Determine Month/Year for context if not provided
     let currentMonthYear = monthYear;
     if (!currentMonthYear && details.length > 0) {
-        // Try to extract from first detail day "DD/MM/YYYY"
         const match = details[0].day.match(/\d{1,2}\/(\d{1,2}\/\d{2,4})/);
-        if (match) {
-            currentMonthYear = match[1];
-        }
+        if (match) currentMonthYear = match[1];
     }
 
     const scholarOverrides = settings.scholarOverrides?.[name];
-
     const assignedSedarimIds = scholarOverrides?.assignedSedarim?.length
         ? scholarOverrides.assignedSedarim
         : settings.sedarim.map(s => s.id);
-    
     const assignedSedarim = settings.sedarim.filter(s => assignedSedarimIds.includes(s.id));
     
-    // Calculate Working Days (excluding Friday/Saturday)
     let workingDaysCount = 0;
-    if (activeDays) {
-        activeDays.forEach(day => {
-            const dow = getDayOfWeek(day, currentMonthYear);
-            // 5 is Friday, 6 is Saturday. Count only if NOT Friday or Saturday.
-            if (dow !== 5 && dow !== 6) {
-                workingDaysCount++;
-            }
-        });
-    } else {
-        details.forEach(d => {
-             if (d.rawTime !== 'חופש') {
-                 const dow = getDayOfWeek(d.day, currentMonthYear);
-                 if (dow !== 5 && dow !== 6) {
-                    workingDaysCount++;
-                 }
-             }
-        });
-    }
-    
-    const workingDaysInMonth = workingDaysCount;
-
-    // --- Base Stipend Calculation ---
-    let baseStipend = settings.baseStipend;
-    const attendedSederIdsInMonth = new Set<number>();
-     details.forEach(d => {
-        Object.keys(d.sederHours).forEach(sederIdStr => {
-            const sederId = Number(sederIdStr);
-            if((d.sederHours[sederId] || 0) > 0 && assignedSedarimIds.includes(sederId)) {
-                attendedSederIdsInMonth.add(sederId);
-            }
-        });
+    const detailsByDay = new Map<string, DailyDetail>();
+    details.forEach(d => {
+        const dayNumMatch = d.day.match(/^\d+/);
+        if (dayNumMatch) detailsByDay.set(dayNumMatch[0], d);
     });
 
-    if (attendedSederIdsInMonth.size > 0 && attendedSederIdsInMonth.size < assignedSedarim.length) {
-         const attendedPercentageSum = [...attendedSederIdsInMonth].reduce((sum, id) => {
-            const seder = assignedSedarim.find(s => s.id === id);
-            return sum + (seder?.partialStipendPercentage || 0);
-        }, 0);
-        
-        if (attendedPercentageSum > 0 && attendedPercentageSum <= 100) {
-             baseStipend *= (attendedPercentageSum / 100);
+    const relevantDays = activeDays ? Array.from(activeDays) : details.map(d => d.day.match(/^\d+/)?.[0]).filter(Boolean) as string[];
+    relevantDays.forEach(dayNum => {
+        const dow = getDayOfWeek(dayNum, currentMonthYear);
+        const detail = detailsByDay.get(dayNum);
+        if (dow !== 5 && dow !== 6 && detail?.rawTime !== 'חופש') {
+            workingDaysCount++;
         }
+    });
+
+    let baseStipend = settings.baseStipend;
+    if (settings.baseStipendType === 'daily') baseStipend = settings.baseStipend * workingDaysCount;
+    
+    if (assignedSedarim.length < settings.sedarim.length) {
+         const assignedPercentageSum = assignedSedarim.reduce((sum, s) => sum + (s.partialStipendPercentage || 0), 0);
+         if (assignedPercentageSum > 0 && assignedPercentageSum <= 100) {
+             baseStipend = baseStipend * (assignedPercentageSum / 100);
+         }
     }
-
-
-    // --- Per-Seder Deduction Calculation ---
+    
     let totalDeduction = 0;
     let totalCreditedHours = 0;
     let totalActualHours = 0;
     let totalRequiredHours = 0;
     let totalApprovedAbsenceHours = 0;
-    const deductionDetails: StipendResult['deductionDetails'] = [];
-    const detailsByDay = new Map<string, DailyDetail>();
-    details.forEach(d => {
-        const dayNumMatch = d.day.match(/^\d+/);
-        if (dayNumMatch) {
-            detailsByDay.set(dayNumMatch[0], d);
-        }
-    });
+    const deductionDetails: any[] = [];
 
     for (const seder of assignedSedarim) {
-        const sederDuration = timeToDecimal(seder.endTime) - timeToDecimal(seder.startTime);
+        const sederStart = timeToDecimal(seder.startTime);
+        const sederEnd = timeToDecimal(seder.endTime);
+        const sederDuration = sederEnd - sederStart;
         if (isNaN(sederDuration) || sederDuration <= 0) continue;
-
-        const rules = seder.useCustomDeductions ? seder.deductions : settings.deductions;
 
         let sederTotalCreditedHours = 0;
         let sederTotalActualHours = 0;
         
-        const relevantDays = activeDays ? Array.from(activeDays) : details.map(d => d.day.match(/^\d+/)?.[0]).filter(Boolean) as string[];
-        
         relevantDays.forEach(dayNum => {
             const detail = detailsByDay.get(dayNum);
-            // Only consider days that are not official kollel holidays
-            if (detail?.rawTime === 'חופש') return;
+            const dow = getDayOfWeek(dayNum, currentMonthYear);
+            if (dow === 5 || dow === 6 || detail?.rawTime === 'חופש') return;
 
-            if (detail) { // Scholar has an entry for this day
-                const attendedHours = detail.sederHours[seder.id] || 0;
-                const approvedHours = detail.approvedAbsenceHours?.[seder.id] || 0;
+            if (detail) { 
+                let attendedHours = detail.sederHours[seder.id] || 0;
                 
+                // Early Exit Tolerance
+                // If user leaves up to X mins early, we round it up to full duration
+                const exitTolerance = (seder.earlyExitToleranceMinutes || 0) / 60;
+                if (exitTolerance > 0 && attendedHours > 0) {
+                    const deficit = Math.max(0, sederDuration - attendedHours);
+                    if (deficit <= exitTolerance) attendedHours = sederDuration;
+                }
+
+                const approvedHours = detail.approvedAbsenceHours?.[seder.id] || 0;
                 sederTotalActualHours += attendedHours;
                 sederTotalCreditedHours += attendedHours + approvedHours;
                 totalApprovedAbsenceHours += approvedHours;
-
             }
         });
 
-        const sederRequiredHours = workingDaysInMonth * sederDuration;
+        const sederRequiredHours = workingDaysCount * sederDuration;
+        totalRequiredHours += sederRequiredHours;
+        totalCreditedHours += sederTotalCreditedHours;
+        totalActualHours += sederTotalActualHours;
+
+        const rules = seder.useCustomDeductions ? seder.deductions : settings.deductions;
         const sederHourDeficit = Math.max(0, sederRequiredHours - sederTotalCreditedHours);
-        
         const sederAttendancePercentage = sederRequiredHours > 0 ? (sederTotalCreditedHours / sederRequiredHours) * 100 : 100;
         const deductionRate = sederAttendancePercentage >= rules.attendanceThresholdPercent ? rules.lowRate : rules.highRate;
         const sederDeduction = sederHourDeficit * deductionRate;
 
-        totalDeduction += sederDeduction;
-        totalCreditedHours += sederTotalCreditedHours;
-        totalActualHours += sederTotalActualHours;
-        totalRequiredHours += sederRequiredHours;
-
-        if (sederHourDeficit > 0.01) { // Only add if there is a deficit
-             deductionDetails.push({ sederName: seder.name, deficit: sederHourDeficit, rate: deductionRate, total: sederDeduction });
+        if (settings.baseStipendCalculationMethod !== 'hourly_fallback') {
+            totalDeduction += sederDeduction;
+            if (sederHourDeficit > 0.01) { 
+                deductionDetails.push({ sederName: seder.name, deficit: sederHourDeficit, rate: deductionRate, total: sederDeduction });
+            }
         }
     }
 
     const overallAttendancePercentage = totalRequiredHours > 0 ? (totalCreditedHours / totalRequiredHours) * 100 : 100;
-    
-    // --- Bonus Calculation ---
+    let isHourlyFallbackApplied = false;
+    if (settings.baseStipendCalculationMethod === 'hourly_fallback') {
+        const threshold = settings.deductions.attendanceThresholdPercent || 80;
+        if (overallAttendancePercentage < threshold) {
+            isHourlyFallbackApplied = true;
+            const fallbackRate = settings.fallbackHourlyRate || 10;
+            baseStipend = totalCreditedHours * fallbackRate;
+            totalDeduction = 0;
+        } 
+    }
+
     let totalBonus = 0;
-    const bonusDetails: { name: string; count: number; totalAmount: number }[] = [];
+    const bonusDetails: any[] = [];
     let totalApprovedLatenessCount = 0;
     
-    (assignedSedarim || []).forEach(seder => {
+    assignedSedarim.forEach(seder => {
         if (!seder.punctualityBonusEnabled) return;
-
-        // Apply the global attendance threshold to punctuality bonuses.
-        if (settings.bonusAttendanceThresholdEnabled && overallAttendancePercentage < settings.bonusAttendanceThresholdPercent) {
-            return;
-        }
+        if (settings.bonusAttendanceThresholdEnabled && overallAttendancePercentage < settings.bonusAttendanceThresholdPercent) return;
 
         const isSederA = seder.name.includes("א'");
+        let failureCount = 0; // absences or hours deficit depending on model
+        let successCount = 0;
 
-        const lateCount = details.filter(d => {
-            const isLate = isSederA ? d.isLateSederA : d.isLateSederB;
-            return isLate && !d.isLatenessApproved?.[seder.id];
-        }).length;
+        // Fix: sederTotalActualHours was out of scope. We calculate local totals for bonus logic.
+        let sederTotalActualHoursLocal = 0;
+        let sederTotalApprovedHoursLocal = 0;
 
-        const approvedLatenessForSeder = details.filter(d => {
-            const isLate = isSederA ? d.isLateSederA : d.isLateSederB;
-            return isLate && d.isLatenessApproved?.[seder.id];
-        }).length;
-        totalApprovedLatenessCount += approvedLatenessForSeder;
+        relevantDays.forEach(dayNum => {
+             const d = detailsByDay.get(dayNum);
+             const dow = getDayOfWeek(dayNum, currentMonthYear);
+             if (dow === 5 || dow === 6 || !d || d.rawTime === 'חופש') return;
 
-        if (lateCount >= seder.punctualityBonusCancellationThreshold) return;
-        
-        const onTimeCount = details.filter(d => {
              const isLate = isSederA ? d.isLateSederA : d.isLateSederB;
-             const attended = (d.sederHours[seder.id] || 0) > 0;
-             return attended && (!isLate || d.isLatenessApproved?.[seder.id]);
-        }).length;
+             const attendedHours = d.sederHours[seder.id] || 0;
+             const approvedLate = d.isLatenessApproved?.[seder.id];
+             const approvedAbsence = d.isAbsenceApproved?.[seder.id];
 
-        const bonusAmount = onTimeCount * seder.punctualityBonusAmount;
-        if (bonusAmount > 0) {
-            totalBonus += bonusAmount;
-            bonusDetails.push({ name: `שמירת ${seder.name}`, count: onTimeCount, totalAmount: bonusAmount });
+             sederTotalActualHoursLocal += attendedHours;
+             sederTotalApprovedHoursLocal += d.approvedAbsenceHours?.[seder.id] || 0;
+
+             if (attendedHours <= 0) {
+                 if (!approvedAbsence) failureCount++;
+             } else {
+                 if (isLate && !approvedLate) failureCount++;
+                 else successCount++;
+             }
+             if (isLate && approvedLate) totalApprovedLatenessCount++;
+        });
+
+        // Use total deficit hours as failure count for tiered logic if relevant
+        // Fix: Use sederTotalActualHoursLocal and sederTotalApprovedHoursLocal instead of missing scoped variables.
+        const totalSederDeficit = Math.max(0, (workingDaysCount * (timeToDecimal(seder.endTime) - timeToDecimal(seder.startTime))) - (sederTotalActualHoursLocal + sederTotalApprovedHoursLocal));
+
+        let bonusRate = seder.punctualityBonusAmount;
+        let bonusName = `שמירת ${seder.name}`;
+
+        if (seder.punctualityBonusType === 'tiered' && seder.punctualityTiers?.length) {
+            bonusRate = 0;
+            const sortedTiers = [...seder.punctualityTiers].sort((a, b) => a.maxFailures - b.maxFailures);
+            // Comparison based on failures (absences/lates). Use hours if needed.
+            const metric = failureCount; 
+            for (const tier of sortedTiers) {
+                if (metric <= tier.maxFailures) {
+                    bonusRate = tier.amount;
+                    break;
+                }
+            }
+        } else if (failureCount >= seder.punctualityBonusCancellationThreshold) {
+            bonusRate = 0;
+        }
+
+        const bonusAmount = successCount * bonusRate;
+        if (bonusAmount > 0 || failureCount > 0) {
+            if (bonusAmount > 0) totalBonus += bonusAmount;
+            bonusDetails.push({ name: bonusName, count: successCount, failures: failureCount, totalAmount: bonusAmount });
         }
     });
 
     (settings.generalBonuses || []).forEach(bonusDef => {
-        const countOrAmount = bonusData[bonusDef.name] || 0;
-        if (countOrAmount <= 0) return;
-
-        let bonusMultiplier = 1;
-
+        const val = bonusData[bonusDef.name] || 0;
+        if (val <= 0) return;
+        let multiplier = 1;
         if (bonusDef.attendanceConditionType === 'global') {
-             if (settings.bonusAttendanceThresholdEnabled && overallAttendancePercentage < settings.bonusAttendanceThresholdPercent) {
-                 bonusMultiplier = 0;
-             }
-        } else if (bonusDef.attendanceConditionType === 'custom' && bonusDef.customConditions && bonusDef.customConditions.length > 0) {
-             bonusMultiplier = 0; // Default to 0 if custom conditions exist but none are met
-             // Sort by threshold descending to find the highest match
-             const sortedConditions = [...bonusDef.customConditions].sort((a, b) => b.threshold - a.threshold);
-             
-             for (const condition of sortedConditions) {
-                 if (overallAttendancePercentage >= condition.threshold) {
-                     bonusMultiplier = condition.percent / 100;
+             if (overallAttendancePercentage < settings.bonusAttendanceThresholdPercent) multiplier = 0;
+        } else if (bonusDef.attendanceConditionType === 'custom' && bonusDef.customConditions?.length) {
+             multiplier = 0;
+             const sorted = [...bonusDef.customConditions].sort((a, b) => b.threshold - a.threshold);
+             for (const c of sorted) {
+                 if (overallAttendancePercentage >= c.threshold) {
+                     multiplier = c.percent / 100;
                      break;
                  }
              }
         } 
-        // Fallback for legacy data/migration safety
-        else if (bonusDef.subjectToAttendanceThreshold && settings.bonusAttendanceThresholdEnabled && overallAttendancePercentage < settings.bonusAttendanceThresholdPercent) {
-             bonusMultiplier = 0;
-        }
-
-        if (bonusMultiplier > 0) {
-            const baseAmount = bonusDef.bonusType === 'count' ? countOrAmount * bonusDef.amount : countOrAmount;
-            const finalAmount = baseAmount * bonusMultiplier;
-            
-            totalBonus += finalAmount;
-            bonusDetails.push({ 
-                name: bonusDef.name + (bonusMultiplier < 1 ? ` (${(bonusMultiplier * 100).toFixed(0)}%)` : ''), 
-                count: bonusDef.bonusType === 'count' ? countOrAmount : 1, 
-                totalAmount: finalAmount 
-            });
+        if (multiplier > 0) {
+            const amt = (bonusDef.bonusType === 'count' ? val * bonusDef.amount : val) * multiplier;
+            totalBonus += amt;
+            bonusDetails.push({ name: bonusDef.name + (multiplier < 1 ? ` (${(multiplier * 100).toFixed(0)}%)` : ''), count: bonusDef.bonusType === 'count' ? val : 1, totalAmount: amt });
         }
     });
     
-    // --- Final Calculation ---
     let finalStipend = baseStipend - totalDeduction + totalBonus;
-    if (settings.rounding === 'upTo10') {
-        finalStipend = Math.ceil(finalStipend / 10) * 10;
-    }
-
-    // --- Construct full details for UI ---
-    let fullDetails: DailyDetail[] = [];
-    if (activeDays && monthYear) {
-        const sortedActiveDays = Array.from(activeDays).sort((a, b) => parseInt(a) - parseInt(b));
-        fullDetails = sortedActiveDays.map(dayNum => {
-            const existingDetail = detailsByDay.get(dayNum);
-            if (existingDetail) {
-                return existingDetail;
-            } else {
-                return {
-                    day: `${dayNum}/${monthYear}`,
-                    sederHours: {},
-                    rawTime: 'נעדר',
-                };
-            }
-        });
-    } else {
-        // Fallback for single-scholar sheets or when activeDays isn't available
-        fullDetails = [...details].sort((a, b) => {
-            const dayA = parseInt(a.day.split('/')[0]);
-            const dayB = parseInt(b.day.split('/')[0]);
-            return dayA - dayB;
-        });
-    }
-
-    // Filter out Fridays (5) and Saturdays (6) from the UI list
-    fullDetails = fullDetails.filter(d => {
-        const dow = getDayOfWeek(d.day, currentMonthYear);
-        return dow !== 5 && dow !== 6;
-    });
+    if (settings.rounding === 'upTo10') finalStipend = Math.ceil(finalStipend / 10) * 10;
 
     return {
         name,
         totalHours: totalActualHours,
         stipend: Math.max(0, finalStipend),
-        details: fullDetails,
+        details: Array.from(detailsByDay.values()).sort((a,b) => parseInt(a.day) - parseInt(b.day)),
         bonusDetails,
         attendancePercentage: overallAttendancePercentage,
         baseStipendUsed: baseStipend,
@@ -297,8 +249,9 @@ export const calculateStipendForScholar = (
         hourDeficit: totalRequiredHours - totalCreditedHours,
         requiredHours: totalRequiredHours,
         deductionDetails,
-        workingDaysInMonth,
+        workingDaysInMonth: workingDaysCount,
         totalApprovedAbsenceHours,
         totalApprovedLatenessCount,
+        isHourlyFallbackApplied,
     };
 };

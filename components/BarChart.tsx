@@ -1,11 +1,14 @@
+
 import React from 'react';
 import type { TimelineDataPoint } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface BarChartProps {
   data: TimelineDataPoint[];
 }
 
 const BarChart: React.FC<BarChartProps> = ({ data }) => {
+  const { t } = useLanguage();
   const width = 800;
   const height = 300;
   const margin = { top: 20, right: 20, bottom: 60, left: 50 };
@@ -63,10 +66,10 @@ const BarChart: React.FC<BarChartProps> = ({ data }) => {
                     </g>
                 ))}
                  <text x={innerWidth / 2} y={innerHeight + 55} textAnchor="middle" className="text-sm fill-current text-slate-600 dark:text-slate-300">
-                    חודש
+                    {t('chart_month')}
                 </text>
                 <text transform={`translate(-35, ${innerHeight/2}) rotate(-90)`} textAnchor="middle" className="text-sm fill-current text-slate-600 dark:text-slate-300">
-                    ממוצע שעות
+                    {t('chart_avg_hours')}
                 </text>
 
                 {/* Bars */}
@@ -79,7 +82,7 @@ const BarChart: React.FC<BarChartProps> = ({ data }) => {
                         height={innerHeight - getY(d.averageHours)}
                         className="fill-current text-indigo-500 opacity-80 hover:opacity-100 transition-opacity"
                     >
-                        <title>{`${d.monthYear}: ${d.averageHours.toFixed(2)} שעות`}</title>
+                        <title>{`${d.monthYear}: ${d.averageHours.toFixed(2)} ${t('hours')}`}</title>
                     </rect>
                 ))}
             </g>
