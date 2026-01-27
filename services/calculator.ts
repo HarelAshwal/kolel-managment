@@ -134,11 +134,14 @@ export const calculateStipendForScholar = (
 
     const overallAttendancePercentage = totalRequiredHours > 0 ? (totalCreditedHours / totalRequiredHours) * 100 : 100;
     let isHourlyFallbackApplied = false;
+    let hourlyRateApplied: number | undefined;
+
     if (settings.baseStipendCalculationMethod === 'hourly_fallback') {
         const threshold = settings.deductions.attendanceThresholdPercent || 80;
         if (overallAttendancePercentage < threshold) {
             isHourlyFallbackApplied = true;
             const fallbackRate = settings.fallbackHourlyRate || 10;
+            hourlyRateApplied = fallbackRate;
             baseStipend = totalCreditedHours * fallbackRate;
             totalDeduction = 0;
         } 
@@ -150,13 +153,19 @@ export const calculateStipendForScholar = (
     
     assignedSedarim.forEach(seder => {
         if (!seder.punctualityBonusEnabled) return;
-        if (settings.bonusAttendanceThresholdEnabled && overallAttendancePercentage < settings.bonusAttendanceThresholdPercent) return;
+        
+        // CHANGE: If hourly fallback is active, we IGNORE the global bonus threshold check.
+        // We let the specific tables/tiers decide.
+        if (settings.bonusAttendanceThresholdEnabled && 
+            overallAttendancePercentage < settings.bonusAttendanceThresholdPercent && 
+            !isHourlyFallbackApplied) {
+            return;
+        }
 
         const isSederA = seder.name.includes("א'");
         let failureCount = 0; // absences or hours deficit depending on model
         let successCount = 0;
 
-        // Fix: sederTotalActualHours was out of scope. We calculate local totals for bonus logic.
         let sederTotalActualHoursLocal = 0;
         let sederTotalApprovedHoursLocal = 0;
 
@@ -183,7 +192,6 @@ export const calculateStipendForScholar = (
         });
 
         // Use total deficit hours as failure count for tiered logic if relevant
-        // Fix: Use sederTotalActualHoursLocal and sederTotalApprovedHoursLocal instead of missing scoped variables.
         const totalSederDeficit = Math.max(0, (workingDaysCount * (timeToDecimal(seder.endTime) - timeToDecimal(seder.startTime))) - (sederTotalActualHoursLocal + sederTotalApprovedHoursLocal));
 
         let bonusRate = seder.punctualityBonusAmount;
@@ -216,7 +224,10 @@ export const calculateStipendForScholar = (
         if (val <= 0) return;
         let multiplier = 1;
         if (bonusDef.attendanceConditionType === 'global') {
-             if (overallAttendancePercentage < settings.bonusAttendanceThresholdPercent) multiplier = 0;
+             // We keep the global restriction for general bonuses unless specifically requested otherwise,
+             // but technically the user prompt focused on 'The table of bonus cancellation tiers', which refers to Punctuality.
+             // If general bonuses should also be allowed in hourly mode, uncomment the part in parentheses:
+             if (overallAttendancePercentage < settings.bonusAttendanceThresholdPercent /* && !isHourlyFallbackApplied */) multiplier = 0;
         } else if (bonusDef.attendanceConditionType === 'custom' && bonusDef.customConditions?.length) {
              multiplier = 0;
              const sorted = [...bonusDef.customConditions].sort((a, b) => b.threshold - a.threshold);
@@ -253,5 +264,6 @@ export const calculateStipendForScholar = (
         totalApprovedAbsenceHours,
         totalApprovedLatenessCount,
         isHourlyFallbackApplied,
+        hourlyRateApplied,
     };
 };

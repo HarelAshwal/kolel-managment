@@ -126,6 +126,8 @@ const translations = {
     "round_to_10": "עיגול ל-10 הקרוב",
     "no_daily_details": "אין פירוט יומי זמין.",
     "bonus_failures": "הפסדים בגין איחורים/חיסורים:",
+    "per_hour_label": "לשעה",
+    "per_day_label": "ליום",
 
     // Saved Data View
     "load_saved_data": "טעינת נתונים שמורים",
@@ -363,6 +365,8 @@ const translations = {
     "round_to_10": "Round to nearest 10",
     "no_daily_details": "No daily details available.",
     "bonus_failures": "Failures/Lates:",
+    "per_hour_label": "per hour",
+    "per_day_label": "per day",
 
     // Saved Data View
     "load_saved_data": "Load Saved Data",

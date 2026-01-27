@@ -116,12 +116,42 @@ const StipendDetailModal: React.FC<{
 
   const getCalculationSteps = () => {
     const steps = [];
-    steps.push({ 
-      label: t('base_stipend_label'), 
-      value: `₪${Number(result.baseStipendUsed || settings.baseStipend || 0).toFixed(2)}`, 
-      color: 'text-green-600 dark:text-green-400', 
-      sign: '+' 
-    });
+    
+    // Improved Breakdown of Base Stipend Logic
+    if (result.isHourlyFallbackApplied) {
+        steps.push({
+            label: `${t('base_stipend_label')} (${t('method_fallback')})`,
+            value: `₪${Number(result.baseStipendUsed || 0).toFixed(2)}`,
+            color: 'text-amber-600 dark:text-amber-400',
+            sign: '+'
+        });
+        // Detail how we got here
+        steps.push({
+            label: `${result.totalHours.toFixed(2)} ${t('hours')} * ₪${result.hourlyRateApplied} ${t('per_hour_label')}`,
+            value: '',
+            color: 'text-xs text-slate-500'
+        });
+
+    } else if (settings.baseStipendType === 'daily') {
+        steps.push({
+            label: `${t('base_stipend_label')} (${t('type_daily')})`,
+            value: `₪${Number(result.baseStipendUsed || 0).toFixed(2)}`,
+            color: 'text-green-600 dark:text-green-400',
+            sign: '+'
+        });
+         steps.push({
+            label: `${result.workingDaysInMonth} ${t('days')} * ₪${settings.baseStipend} ${t('per_day_label')}`,
+            value: '',
+            color: 'text-xs text-slate-500'
+        });
+    } else {
+         steps.push({ 
+            label: `${t('base_stipend_label')} (${t('type_monthly')})`, 
+            value: `₪${Number(result.baseStipendUsed || settings.baseStipend || 0).toFixed(2)}`, 
+            color: 'text-green-600 dark:text-green-400', 
+            sign: '+' 
+        });
+    }
     
     steps.push({ label: t('attendance_calc_header'), value: '' });
     if (result.workingDaysInMonth !== undefined && dailyRequiredHours > 0) {
@@ -207,7 +237,7 @@ const StipendDetailModal: React.FC<{
                   {getCalculationSteps().map((step, index) => (
                     <div key={index} className="flex flex-col text-sm border-b border-slate-100 dark:border-slate-800 pb-1 last:border-0">
                       <div className="flex justify-between items-center">
-                        <span className="text-slate-600 dark:text-slate-300">{step.label}:</span>
+                        <span className={`text-slate-600 dark:text-slate-300 ${step.value === '' ? 'w-full' : ''}`}>{step.label}:</span>
                         {step.value && <span className={`font-mono font-medium ${step.color || ''}`}>{step.sign && <span className="mr-1">{step.sign}</span>}{step.value}</span>}
                       </div>
                       {/* Show failures/lates if present in step data */}

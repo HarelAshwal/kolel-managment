@@ -116,6 +116,7 @@ export interface StipendResult {
   totalApprovedAbsenceHours?: number;
   totalApprovedLatenessCount?: number;
   isHourlyFallbackApplied?: boolean;
+  hourlyRateApplied?: number; // Added to track fallback rate
 }
 
 // Added missing KollelDetails interface

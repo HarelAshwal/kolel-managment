@@ -335,7 +335,15 @@ const processMultiScholarSheet = (
                     attendedDuration = 0;
                     approvedDuration = sederEnd - sederStart;
                 } else if (actualEntryTime !== null && actualExitTime !== null && actualExitTime > actualEntryTime) {
-                    attendedDuration = Math.max(0, Math.min(actualExitTime, sederEnd) - Math.max(actualEntryTime, sederStart));
+                    // Strict Calculation:
+                    // Only count time strictly between SederStart and SederEnd.
+                    // Effectively: Max(ActualEntry, SederStart) -> Min(ActualExit, SederEnd)
+                    
+                    const effectiveEntry = Math.max(actualEntryTime, sederStart);
+                    const effectiveExit = Math.min(actualExitTime, sederEnd);
+                    
+                    // Ensure we don't get negative duration if the student came completely outside hours
+                    attendedDuration = Math.max(0, effectiveExit - effectiveEntry);
 
                     if (isEntryApproved || isExitApproved) {
                         const creditedEntry = isEntryApproved ? sederStart : actualEntryTime;
@@ -478,7 +486,15 @@ const processSingleScholarSheet = (
                 attendedDuration = 0;
                 approvedDuration = seder.endDecimal - seder.startDecimal;
             } else if (actualEntryTime !== null && actualExitTime !== null && actualExitTime > actualEntryTime) {
-                attendedDuration = Math.max(0, Math.min(actualExitTime, seder.endDecimal) - Math.max(actualEntryTime, seder.startDecimal));
+                // Strict Calculation:
+                // Only count time strictly between SederStart and SederEnd.
+                // Effectively: Max(ActualEntry, SederStart) -> Min(ActualExit, SederEnd)
+                
+                const effectiveEntry = Math.max(actualEntryTime, seder.startDecimal);
+                const effectiveExit = Math.min(actualExitTime, seder.endDecimal);
+                
+                // Ensure we don't get negative duration if the student came completely outside hours
+                attendedDuration = Math.max(0, effectiveExit - effectiveEntry);
 
                 if (isEntryApproved || isExitApproved) {
                     const creditedEntry = isEntryApproved ? seder.startDecimal : actualEntryTime;
