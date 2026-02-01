@@ -197,9 +197,10 @@ export const calculateStipendForScholar = (
         let bonusRate = seder.punctualityBonusAmount;
         let bonusName = `שמירת ${seder.name}`;
 
-        if (seder.punctualityBonusType === 'tiered' && seder.punctualityTiers?.length) {
+        const tiers = seder.punctualityTiers;
+        if (tiers && tiers.length > 0) {
             bonusRate = 0;
-            const sortedTiers = [...seder.punctualityTiers].sort((a, b) => a.maxFailures - b.maxFailures);
+            const sortedTiers = [...tiers].sort((a, b) => a.maxFailures - b.maxFailures);
             // Comparison based on failures (absences/lates). Use hours if needed.
             const metric = failureCount; 
             for (const tier of sortedTiers) {
