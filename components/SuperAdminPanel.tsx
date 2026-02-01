@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import type { KollelDetails } from '../types';
 import { getAllKollelsForAdmin } from '../services/api';
@@ -179,7 +180,7 @@ const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onSelectKollel }) => 
                                         <div className="mt-3 pt-3 border-t border-gray-100">
                                             <div className="flex items-center justify-between text-xs text-gray-500">
                                                 {/* Fix: Property 'stipendSettings' does not exist on type 'KollelDetails'. Use 'settings' instead. */}
-                                                <span>שכר יומי: ₪{kollel.settings?.dailyAmount || 0}</span>
+                                                <span>שכר בסיס: ₪{kollel.settings?.baseStipend || 0}</span>
                                                 <span className={`px-2 py-1 rounded-full ${kollel.isActive
                                                     ? 'bg-green-100 text-green-800'
                                                     : 'bg-gray-100 text-gray-800'
@@ -197,4 +198,6 @@ const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onSelectKollel }) => 
             </div>
         </div>
     );
-}; export default SuperAdminPanel;
+};
+
+export default SuperAdminPanel;

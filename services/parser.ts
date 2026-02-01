@@ -3,12 +3,27 @@ import type { StipendResult, DailyDetail, KollelDetails, ParseResult, StipendSet
 import { calculateStipendForScholar } from './calculator';
 
 const parseSederTime = (timeStr: string | number): number | null => {
-    const cleanedTimeStr = String(timeStr || '').trim().replace('*', '').replace('מ', '');
+    // Handle Excel numeric time (fraction of day, e.g., 0.5 = 12:00)
+    if (typeof timeStr === 'number') {
+        if (timeStr >= 0 && timeStr < 1.0) {
+            return timeStr * 24;
+        }
+        // Handle HHmm as number (e.g. 930 for 09:30)
+        if (timeStr >= 0 && timeStr <= 2400) {
+             const h = Math.floor(timeStr / 100);
+             const m = timeStr % 100;
+             if (m < 60) return h + m / 60;
+        }
+        return null;
+    }
+
+    const cleanedTimeStr = String(timeStr || '').trim().replace(/[*מ\-\s]/g, ''); // Remove *, 'מ', dashes, spaces
     if (!cleanedTimeStr) return null;
 
-    // Case 1: HH:mm format
-    if (cleanedTimeStr.includes(':')) {
-        const parts = cleanedTimeStr.split(':');
+    // Case 1: HH:mm or HH.mm format
+    if (cleanedTimeStr.includes(':') || cleanedTimeStr.includes('.')) {
+        const separator = cleanedTimeStr.includes(':') ? ':' : '.';
+        const parts = cleanedTimeStr.split(separator);
         if (parts.length === 2) {
             const hours = parseInt(parts[0], 10);
             const minutes = parseInt(parts[1], 10);
@@ -18,7 +33,7 @@ const parseSederTime = (timeStr: string | number): number | null => {
         }
     }
 
-    // Case 2: HHmm format
+    // Case 2: HHmm format (e.g. 0930 or 930)
     const numericStr = cleanedTimeStr.replace(/[^0-9]/g, '');
     if (numericStr.length >= 3 && numericStr.length <= 4) {
         const paddedStr = numericStr.padStart(4, '0');
@@ -337,13 +352,13 @@ const processMultiScholarSheet = (
                 } else if (actualEntryTime !== null && actualExitTime !== null && actualExitTime > actualEntryTime) {
                     // Strict Calculation:
                     // Only count time strictly between SederStart and SederEnd.
-                    // Effectively: Max(ActualEntry, SederStart) -> Min(ActualExit, SederEnd)
-                    
                     const effectiveEntry = Math.max(actualEntryTime, sederStart);
                     const effectiveExit = Math.min(actualExitTime, sederEnd);
                     
-                    // Ensure we don't get negative duration if the student came completely outside hours
-                    attendedDuration = Math.max(0, effectiveExit - effectiveEntry);
+                    // If effectiveExit > effectiveEntry, we have valid overlap
+                    if (effectiveExit > effectiveEntry) {
+                        attendedDuration = effectiveExit - effectiveEntry;
+                    }
 
                     if (isEntryApproved || isExitApproved) {
                         const creditedEntry = isEntryApproved ? sederStart : actualEntryTime;
@@ -464,65 +479,97 @@ const processSingleScholarSheet = (
             continue;
         }
 
-        const rawTimeParts: string[] = [];
+        // Collect all valid time intervals from the row
+        interface RowInterval {
+            entryVal: number;
+            exitVal: number;
+            entryStr: string;
+            exitStr: string;
+            isEntryApproved: boolean;
+            isExitApproved: boolean;
+        }
+        const rowIntervals: RowInterval[] = [];
 
-        for (let sederIndex = 0; sederIndex < sedarimConfig.length; sederIndex++) {
-            if (sederIndex >= entryIndices.length) break;
+        for (let idx = 0; idx < entryIndices.length; idx++) {
+            const entryIdx = entryIndices[idx];
+            const exitIdx = exitIndices[idx];
+            if (exitIdx === undefined) continue;
 
-            const seder = sedarimConfig[sederIndex];
-            const entryTimeStr = normalizeCellString(row[entryIndices[sederIndex]] || '');
-            const exitTimeStr = normalizeCellString(row[exitIndices[sederIndex]] || '');
+            const entryStr = normalizeCellString(row[entryIdx] || '');
+            const exitStr = normalizeCellString(row[exitIdx] || '');
 
-            const isEntryApproved = entryTimeStr.includes('מ');
-            const isExitApproved = exitTimeStr.includes('מ');
+            const isEntryApproved = entryStr.includes('מ');
+            const isExitApproved = exitStr.includes('מ');
 
-            const actualEntryTime = parseSederTime(entryTimeStr);
-            const actualExitTime = parseSederTime(exitTimeStr);
+            const actualEntryTime = parseSederTime(row[entryIdx]);
+            const actualExitTime = parseSederTime(row[exitIdx]);
 
-            let attendedDuration = 0;
-            let approvedDuration = 0;
-
-            if (entryTimeStr === 'מ' || exitTimeStr === 'מ') {
-                attendedDuration = 0;
-                approvedDuration = seder.endDecimal - seder.startDecimal;
-            } else if (actualEntryTime !== null && actualExitTime !== null && actualExitTime > actualEntryTime) {
-                // Strict Calculation:
-                // Only count time strictly between SederStart and SederEnd.
-                // Effectively: Max(ActualEntry, SederStart) -> Min(ActualExit, SederEnd)
-                
-                const effectiveEntry = Math.max(actualEntryTime, seder.startDecimal);
-                const effectiveExit = Math.min(actualExitTime, seder.endDecimal);
-                
-                // Ensure we don't get negative duration if the student came completely outside hours
-                attendedDuration = Math.max(0, effectiveExit - effectiveEntry);
-
-                if (isEntryApproved || isExitApproved) {
-                    const creditedEntry = isEntryApproved ? seder.startDecimal : actualEntryTime;
-                    const creditedExit = isExitApproved ? seder.endDecimal : actualExitTime;
-                    const creditedTotalDuration = Math.max(0, Math.min(creditedExit, seder.endDecimal) - Math.max(creditedEntry, seder.startDecimal));
-                    approvedDuration = Math.max(0, creditedTotalDuration - attendedDuration);
-                }
+            // Add to intervals if valid time pair or approved absence ('מ')
+            if (entryStr === 'מ' || exitStr === 'מ' || (actualEntryTime !== null && actualExitTime !== null && actualExitTime > actualEntryTime)) {
+                rowIntervals.push({
+                    entryVal: actualEntryTime || 0,
+                    exitVal: actualExitTime || 0,
+                    entryStr,
+                    exitStr,
+                    isEntryApproved,
+                    isExitApproved
+                });
             }
+        }
 
-            dailyDetail.sederHours[seder.id] = attendedDuration;
-            dailyDetail.approvedAbsenceHours![seder.id] = approvedDuration;
+        const rawTimeParts: string[] = rowIntervals.map(i => `${i.entryStr}-${i.exitStr}`);
 
-            if (actualEntryTime !== null && actualEntryTime > seder.startDecimal + (seder.punctualityLateThresholdMinutes / 60)) {
-                if (seder.name.includes("א'")) dailyDetail.isLateSederA = true;
-                if (seder.name.includes("ב'")) dailyDetail.isLateSederB = true;
-            }
+        // Now map intervals to sedarim based on overlap
+        for (const seder of sedarimConfig) {
+             let attendedDuration = 0;
+             let approvedDuration = 0;
+             let minEntryTimeForLateness = Infinity;
+             let hasRelevantInterval = false;
 
-            // Set approval flags for UI and other logic
-            if (isEntryApproved || isExitApproved) {
-                dailyDetail.isAbsenceApproved![seder.id] = true;
-                if ((dailyDetail.isLateSederA || dailyDetail.isLateSederB) && isEntryApproved) {
-                    dailyDetail.isLatenessApproved![seder.id] = true;
-                }
-            }
+             for (const interval of rowIntervals) {
+                 // Check for overlap
+                 if (interval.entryStr === 'מ' || interval.exitStr === 'מ') {
+                     // If 'M' is found, credit full duration as approved absence
+                     approvedDuration = Math.max(approvedDuration, seder.endDecimal - seder.startDecimal);
+                     dailyDetail.isAbsenceApproved![seder.id] = true;
+                 } else {
+                     const effectiveEntry = Math.max(interval.entryVal, seder.startDecimal);
+                     const effectiveExit = Math.min(interval.exitVal, seder.endDecimal);
+                     
+                     if (effectiveExit > effectiveEntry) {
+                         const overlap = effectiveExit - effectiveEntry;
+                         attendedDuration += overlap;
+                         minEntryTimeForLateness = Math.min(minEntryTimeForLateness, interval.entryVal);
+                         hasRelevantInterval = true;
 
-            if (entryTimeStr || exitTimeStr) {
-                rawTimeParts.push(`${entryTimeStr}-${exitTimeStr}`);
-            }
+                         // Handle partial approvals within time range if needed
+                         if (interval.isEntryApproved || interval.isExitApproved) {
+                             const creditedEntry = interval.isEntryApproved ? seder.startDecimal : interval.entryVal;
+                             const creditedExit = interval.isExitApproved ? seder.endDecimal : interval.exitVal;
+                             const creditedOverlap = Math.max(0, Math.min(creditedExit, seder.endDecimal) - Math.max(creditedEntry, seder.startDecimal));
+                             approvedDuration += Math.max(0, creditedOverlap - overlap);
+                         }
+                     }
+                 }
+             }
+
+             dailyDetail.sederHours[seder.id] = attendedDuration;
+             dailyDetail.approvedAbsenceHours![seder.id] = approvedDuration;
+
+             // Check lateness using the earliest relevant entry time found
+             if (hasRelevantInterval && minEntryTimeForLateness < Infinity) {
+                 if (minEntryTimeForLateness > seder.startDecimal + (seder.punctualityLateThresholdMinutes / 60)) {
+                     if (seder.name.includes("א'")) dailyDetail.isLateSederA = true;
+                     if (seder.name.includes("ב'")) dailyDetail.isLateSederB = true;
+                 }
+             }
+
+             if (dailyDetail.isAbsenceApproved![seder.id]) {
+                 if ((dailyDetail.isLateSederA || dailyDetail.isLateSederB)) {
+                    // Logic for approved late is usually manual, but if 'M' covers it?
+                    // We leave manual unless specifically handled.
+                 }
+             }
         }
 
         dailyDetail.rawTime = rawTimeParts.join(' | ') || '-';
