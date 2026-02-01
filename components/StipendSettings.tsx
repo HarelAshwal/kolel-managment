@@ -204,13 +204,6 @@ const StipendSettingsComponent: React.FC<{ initialSettings: StipendSettings; onS
                 </label>
                 <input type="number" value={settings.deductions.highRate} onChange={e => handleNestedChange('deductions', 'highRate', Number(e.target.value))} className="w-full p-2 border rounded-md bg-white dark:bg-slate-700 dark:border-slate-600" />
             </div>
-             <div>
-                <label className="block text-sm font-medium flex items-center mb-1">
-                    {t('low_deduction')}
-                    <HelpTooltip text={t('help_deduction_rate')} />
-                </label>
-                <input type="number" value={settings.deductions.lowRate} onChange={e => handleNestedChange('deductions', 'lowRate', Number(e.target.value))} className="w-full p-2 border rounded-md bg-white dark:bg-slate-700 dark:border-slate-600" />
-            </div>
         </div>
       </fieldset>
 

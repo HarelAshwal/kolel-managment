@@ -120,15 +120,17 @@ export const calculateStipendForScholar = (
 
         const rules = seder.useCustomDeductions ? seder.deductions : settings.deductions;
         const sederHourDeficit = Math.max(0, sederRequiredHours - sederTotalCreditedHours);
-        const sederAttendancePercentage = sederRequiredHours > 0 ? (sederTotalCreditedHours / sederRequiredHours) * 100 : 100;
-        const deductionRate = sederAttendancePercentage >= rules.attendanceThresholdPercent ? rules.lowRate : rules.highRate;
+        
+        // Use a single deduction rate for everything (High Rate as standard)
+        // User requested removing 'Low Rate' and having one field.
+        const deductionRate = rules.highRate;
+
         const sederDeduction = sederHourDeficit * deductionRate;
 
-        if (settings.baseStipendCalculationMethod !== 'hourly_fallback') {
-            totalDeduction += sederDeduction;
-            if (sederHourDeficit > 0.01) { 
-                deductionDetails.push({ sederName: seder.name, deficit: sederHourDeficit, rate: deductionRate, total: sederDeduction });
-            }
+        // Calculate deductions regardless of calculation method first
+        totalDeduction += sederDeduction;
+        if (sederHourDeficit > 0.01) { 
+            deductionDetails.push({ sederName: seder.name, deficit: sederHourDeficit, rate: deductionRate, total: sederDeduction });
         }
     }
 
@@ -143,8 +145,13 @@ export const calculateStipendForScholar = (
             const fallbackRate = settings.fallbackHourlyRate || 10;
             hourlyRateApplied = fallbackRate;
             baseStipend = totalCreditedHours * fallbackRate;
+            
+            // If fallback is applied, we don't use the standard deductions
             totalDeduction = 0;
+            deductionDetails.length = 0; 
         } 
+        // If overallAttendancePercentage >= threshold:
+        // We use the baseStipend (calculated at start) AND apply the totalDeduction calculated in loop.
     }
 
     let totalBonus = 0;
