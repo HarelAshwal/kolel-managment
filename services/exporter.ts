@@ -74,15 +74,20 @@ export const exportDetailsToCsv = (result: StipendResult) => {
   }
 
   const headers = ['תאריך', 'זמן / סטטוס', 'שעות (עשרוני)'];
+  let totalSum = 0;
   const rows = result.details.map(d => {
     // Fix: Explicitly type sum and h in reduce to avoid 'unknown' errors
     const dailyTotalHours = Object.values(d.sederHours).reduce((sum: number, h: number) => sum + h, 0);
+    totalSum += dailyTotalHours;
     return [
         d.day,
         d.rawTime,
         dailyTotalHours.toFixed(2),
     ];
   });
+  
+  // Add total row
+  rows.push(['', 'סה"כ שעות', totalSum.toFixed(2)]);
 
   const csvContent = createCsvContent(headers, rows);
   const date = new Date().toLocaleDateString('he-IL').replace(/\./g, '-');

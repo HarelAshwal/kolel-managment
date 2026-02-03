@@ -49,16 +49,25 @@ export const calculateStipendForScholar = (
     const assignedSedarim = settings.sedarim.filter(s => assignedSedarimIds.includes(s.id));
     
     let workingDaysCount = 0;
+    
+    // Deep copy details to ensure we calculate on a fresh copy and can modify it 
+    // without affecting source.
+    // Use integer-based keys to avoid "01" vs "1" mismatches.
     const detailsByDay = new Map<string, DailyDetail>();
     details.forEach(d => {
         const dayNumMatch = d.day.match(/^\d+/);
-        if (dayNumMatch) detailsByDay.set(dayNumMatch[0], d);
+        if (dayNumMatch) {
+            // Normalize "01" to "1"
+            const key = String(parseInt(dayNumMatch[0], 10));
+            detailsByDay.set(key, JSON.parse(JSON.stringify(d)));
+        }
     });
 
     const relevantDays = activeDays ? Array.from(activeDays) : details.map(d => d.day.match(/^\d+/)?.[0]).filter(Boolean) as string[];
     relevantDays.forEach(dayNum => {
+        const key = String(parseInt(dayNum, 10));
         const dow = getDayOfWeek(dayNum, currentMonthYear);
-        const detail = detailsByDay.get(dayNum);
+        const detail = detailsByDay.get(key);
         if (dow !== 5 && dow !== 6 && detail?.rawTime !== 'חופש') {
             workingDaysCount++;
         }
@@ -91,22 +100,21 @@ export const calculateStipendForScholar = (
         let sederTotalActualHours = 0;
         
         relevantDays.forEach(dayNum => {
-            const detail = detailsByDay.get(dayNum);
+            const key = String(parseInt(dayNum, 10));
+            const detail = detailsByDay.get(key);
             const dow = getDayOfWeek(dayNum, currentMonthYear);
             if (dow === 5 || dow === 6 || detail?.rawTime === 'חופש') return;
 
             if (detail) { 
                 let attendedHours = detail.sederHours[seder.id] || 0;
                 
-                // Early Exit Tolerance
-                // If user leaves up to X mins early, we round it up to full duration
-                const exitTolerance = (seder.earlyExitToleranceMinutes || 0) / 60;
-                if (exitTolerance > 0 && attendedHours > 0) {
-                    const deficit = Math.max(0, sederDuration - attendedHours);
-                    if (deficit <= exitTolerance) attendedHours = sederDuration;
-                }
-
+                // NOTE: Tolerance logic removed as per user request to calculate based on raw hours only.
+                
+                // Update the detail to ensure consistency
+                detail.sederHours[seder.id] = attendedHours;
+                
                 const approvedHours = detail.approvedAbsenceHours?.[seder.id] || 0;
+                
                 sederTotalActualHours += attendedHours;
                 sederTotalCreditedHours += attendedHours + approvedHours;
                 totalApprovedAbsenceHours += approvedHours;
@@ -177,7 +185,8 @@ export const calculateStipendForScholar = (
         let sederTotalApprovedHoursLocal = 0;
 
         relevantDays.forEach(dayNum => {
-             const d = detailsByDay.get(dayNum);
+             const key = String(parseInt(dayNum, 10));
+             const d = detailsByDay.get(key);
              const dow = getDayOfWeek(dayNum, currentMonthYear);
              if (dow === 5 || dow === 6 || !d || d.rawTime === 'חופש') return;
 
@@ -260,7 +269,12 @@ export const calculateStipendForScholar = (
         name,
         totalHours: totalActualHours,
         stipend: Math.max(0, finalStipend),
-        details: Array.from(detailsByDay.values()).sort((a,b) => parseInt(a.day) - parseInt(b.day)),
+        details: Array.from(detailsByDay.values()).sort((a,b) => {
+             // Improved sort safe parsing
+             const dayA = parseInt(a.day.match(/^\d+/)?.[0] || '0', 10);
+             const dayB = parseInt(b.day.match(/^\d+/)?.[0] || '0', 10);
+             return dayA - dayB;
+        }),
         bonusDetails,
         attendancePercentage: overallAttendancePercentage,
         baseStipendUsed: baseStipend,
