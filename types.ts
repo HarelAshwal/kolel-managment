@@ -39,7 +39,14 @@ export interface GeneralBonus {
   id: number;
   name: string;
   amount: number;
+  // 'excel': Value comes from Excel column.
+  // 'manual_quantity': Manager enters count in modal (Count * Amount).
+  // 'manual_amount': Manager enters total sum in modal.
+  inputMethod?: 'excel' | 'manual_quantity' | 'manual_amount'; 
+  
+  // Deprecated/Legacy mapping for 'excel' mode
   bonusType: 'count' | 'amount'; 
+
   subjectToAttendanceThreshold: boolean;
   attendanceConditionType?: 'none' | 'global' | 'custom';
   customConditions?: BonusCondition[];
@@ -70,6 +77,8 @@ export interface StipendSettings {
   scholarOverrides?: {
     [scholarName: string]: {
       assignedSedarim?: number[];
+      // Map of Bonus ID -> Value (Count or Amount depending on config)
+      manualBonuses?: { [bonusId: number]: number };
     };
   };
 

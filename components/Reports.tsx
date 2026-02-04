@@ -2,14 +2,17 @@
 import React, { useState, useMemo } from 'react';
 import type { MonthlyData, KollelDetails } from '../types';
 import { generateReport } from '../services/reporter';
-import { exportReportToCsv } from '../services/exporter';
+import { exportReportToCsv, generateDetailedExcelReport } from '../services/exporter';
 import { BackIcon } from './icons/BackIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
 import { PercentIcon } from './icons/PercentIcon';
 import { LineChartIcon } from './icons/LineChartIcon';
 import { BarChartIcon } from './icons/BarChartIcon';
+import { FileExcelIcon } from './icons/FileExcelIcon';
+import { EyeIcon } from './icons/EyeIcon';
 import LineChart from './LineChart';
 import BarChart from './BarChart';
+import DetailedReportsPreview from './DetailedReportsPreview';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface ReportsProps {
@@ -21,6 +24,7 @@ interface ReportsProps {
 const Reports: React.FC<ReportsProps> = ({ savedData, onBack, kollelDetails }) => {
   const { t } = useLanguage();
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
+  const [showDetailedPreview, setShowDetailedPreview] = useState(false);
 
   const { availableMonths, availableScholars } = useMemo(() => {
     const months = savedData.map(d => d.monthYear).sort((a, b) => {
@@ -35,6 +39,7 @@ const Reports: React.FC<ReportsProps> = ({ savedData, onBack, kollelDetails }) =
   
   const [selectedMonths, setSelectedMonths] = useState<string[]>(() => availableMonths);
   const [selectedScholars, setSelectedScholars] = useState<string[]>(() => availableScholars);
+  const [detailedReportMonth, setDetailedReportMonth] = useState<string>(availableMonths[0] || '');
 
   const report = useMemo(() => {
     return generateReport(savedData, selectedMonths, selectedScholars, kollelDetails);
@@ -60,6 +65,24 @@ const Reports: React.FC<ReportsProps> = ({ savedData, onBack, kollelDetails }) =
       setter(isAllSelected ? [] : fullList);
   };
 
+  const handleDetailedExcelExport = () => {
+      const monthData = savedData.find(d => d.monthYear === detailedReportMonth);
+      if (monthData) {
+          generateDetailedExcelReport(monthData, kollelDetails);
+      } else {
+          alert('לא נמצאו נתונים לחודש זה.');
+      }
+  };
+
+  const handleDetailedPreview = () => {
+      const monthData = savedData.find(d => d.monthYear === detailedReportMonth);
+      if (monthData) {
+          setShowDetailedPreview(true);
+      } else {
+          alert('לא נמצאו נתונים לחודש זה.');
+      }
+  };
+
   const isAllMonthsSelected = selectedMonths.length === availableMonths.length;
   const isAllScholarsSelected = selectedScholars.length === availableScholars.length;
 
@@ -82,6 +105,40 @@ const Reports: React.FC<ReportsProps> = ({ savedData, onBack, kollelDetails }) =
             <DownloadIcon className="w-5 h-5" />
             {t('export_csv_btn')}
         </button>
+      </div>
+
+      {/* Detailed Report Section */}
+      <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-lg border border-indigo-100 dark:border-indigo-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div>
+              <h3 className="font-bold text-indigo-900 dark:text-indigo-300 text-lg flex items-center gap-2">
+                  <FileExcelIcon className="w-6 h-6" />
+                  דוחות מפורטים חודשיים
+              </h3>
+              <p className="text-sm text-indigo-700 dark:text-indigo-400">בונוסים, נוכחות, מבחנים ותשלומים</p>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+              <select 
+                value={detailedReportMonth} 
+                onChange={(e) => setDetailedReportMonth(e.target.value)}
+                className="p-2 border rounded-md dark:bg-slate-700 dark:border-slate-600 dark:text-white flex-grow sm:flex-grow-0"
+              >
+                  {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <button 
+                onClick={handleDetailedPreview}
+                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 whitespace-nowrap"
+              >
+                  <EyeIcon className="w-4 h-4" />
+                  תצוגה מקדימה
+              </button>
+              <button 
+                onClick={handleDetailedExcelExport}
+                className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 whitespace-nowrap"
+              >
+                  <DownloadIcon className="w-4 h-4" />
+                  ייצוא אקסל
+              </button>
+          </div>
       </div>
 
       {/* Filters */}
@@ -209,6 +266,15 @@ const Reports: React.FC<ReportsProps> = ({ savedData, onBack, kollelDetails }) =
             </table>
         </div>
        </div>
+
+        {/* Modal for detailed preview */}
+       {showDetailedPreview && (
+           <DetailedReportsPreview 
+                monthData={savedData.find(d => d.monthYear === detailedReportMonth)!}
+                kollelDetails={kollelDetails}
+                onClose={() => setShowDetailedPreview(false)}
+           />
+       )}
     </div>
   );
 };

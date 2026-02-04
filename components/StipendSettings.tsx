@@ -67,6 +67,7 @@ const ensureSettingsCompatibility = (settings: StipendSettings): StipendSettings
         ...b,
         id: b.id || Date.now() + index,
         amount: toNumber(b.amount, 0),
+        inputMethod: b.inputMethod || 'excel',
         attendanceConditionType: b.attendanceConditionType || (b.subjectToAttendanceThreshold ? 'global' : 'none'),
         customConditions: (b.customConditions || []).map(c => ({
             threshold: toNumber(c.threshold, 0),
@@ -274,17 +275,33 @@ const StipendSettingsComponent: React.FC<{ initialSettings: StipendSettings; onS
         <div className="space-y-3">
             {settings.generalBonuses.map(bonus => (
                 <div key={bonus.id} className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg border dark:border-slate-600">
-                    <div className="flex gap-2 mb-2 items-center">
-                        <div className="flex-grow">
+                    <div className="flex flex-wrap gap-2 mb-2 items-center">
+                        <div className="flex-grow min-w-[150px]">
                             <label className="text-[10px] text-slate-500 dark:text-slate-400 block flex items-center">{t('bonus_name_ph')} <HelpTooltip text={t('help_bonus_name')} /></label>
                             <input type="text" value={bonus.name} onChange={e => setSettings(p => ({...p, generalBonuses: p.generalBonuses.map(b => b.id === bonus.id ? {...b, name: e.target.value} : b)}))} className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600" />
                         </div>
-                        <div className="w-24">
-                            <label className="text-[10px] text-slate-500 dark:text-slate-400 block flex items-center">{t('amount_ph')} <HelpTooltip text={t('help_bonus_amount')} /></label>
-                            <input type="number" value={bonus.amount} onChange={e => setSettings(p => ({...p, generalBonuses: p.generalBonuses.map(b => b.id === bonus.id ? {...b, amount: Number(e.target.value)} : b)}))} className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600" />
+                        
+                        {/* Input Method Selector */}
+                        <div className="w-36">
+                            <label className="text-[10px] text-slate-500 dark:text-slate-400 block flex items-center">מקור נתונים</label>
+                            <select value={bonus.inputMethod || 'excel'} onChange={e => setSettings(p => ({...p, generalBonuses: p.generalBonuses.map(b => b.id === bonus.id ? {...b, inputMethod: e.target.value as any} : b)}))} className="w-full p-1 border rounded text-xs dark:bg-slate-800 dark:border-slate-600">
+                                <option value="excel">אקסל (אוטומטי)</option>
+                                <option value="manual_quantity">הזנה ידנית (כמות)</option>
+                                <option value="manual_amount">הזנה ידנית (סכום)</option>
+                            </select>
                         </div>
+
+                        {/* Amount - Hidden if manual_amount (since amount is entered manually) */}
+                        {bonus.inputMethod !== 'manual_amount' && (
+                            <div className="w-24">
+                                <label className="text-[10px] text-slate-500 dark:text-slate-400 block flex items-center">{t('amount_ph')} <HelpTooltip text={t('help_bonus_amount')} /></label>
+                                <input type="number" value={bonus.amount} onChange={e => setSettings(p => ({...p, generalBonuses: p.generalBonuses.map(b => b.id === bonus.id ? {...b, amount: Number(e.target.value)} : b)}))} className="w-full p-1 border rounded dark:bg-slate-800 dark:border-slate-600" />
+                            </div>
+                        )}
+
                         <button onClick={() => setSettings(p => ({...p, generalBonuses: p.generalBonuses.filter(b => b.id !== bonus.id)}))} className="mt-4 p-1 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"><TrashIcon className="w-4 h-4 text-red-400"/></button>
                     </div>
+                    
                     <div className="bg-white dark:bg-slate-800 p-2 rounded border dark:border-slate-600 text-[10px]">
                         <div className="flex justify-between items-center mb-1">
                             <span className="flex items-center">תנאי זכאות (לפי % נוכחות חודשי)<HelpTooltip text={t('help_bonus_attendance')} /></span>
@@ -305,7 +322,7 @@ const StipendSettingsComponent: React.FC<{ initialSettings: StipendSettings; onS
                     </div>
                 </div>
             ))}
-            <button onClick={() => setSettings(p => ({...p, generalBonuses: [...p.generalBonuses, {id: Date.now(), name: 'בונוס חדש', amount: 100, bonusType: 'count', subjectToAttendanceThreshold: false, attendanceConditionType: 'custom', customConditions: []}]}))} className="w-full py-2 border-2 border-dashed rounded text-sm hover:bg-slate-100 dark:hover:bg-slate-700 dark:border-slate-600 text-slate-500">+ הוסף בונוס/מבחן</button>
+            <button onClick={() => setSettings(p => ({...p, generalBonuses: [...p.generalBonuses, {id: Date.now(), name: 'בונוס חדש', amount: 100, inputMethod: 'excel', subjectToAttendanceThreshold: false, attendanceConditionType: 'custom', customConditions: []}]}))} className="w-full py-2 border-2 border-dashed rounded text-sm hover:bg-slate-100 dark:hover:bg-slate-700 dark:border-slate-600 text-slate-500">+ הוסף בונוס/מבחן</button>
         </div>
       </fieldset>
     </div>

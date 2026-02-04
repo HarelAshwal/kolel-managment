@@ -8,6 +8,7 @@ import { CloseIcon } from './icons/CloseIcon';
 import { AdjustmentsIcon } from './icons/AdjustmentsIcon';
 import { ChevronIcon } from './icons/ChevronIcon';
 import { useLanguage } from '../contexts/LanguageContext';
+import { CoinsIcon } from './icons/CoinsIcon'; // Importing CoinsIcon for the new section header
 
 
 const StipendDetailModal: React.FC<{
@@ -57,19 +58,36 @@ const StipendDetailModal: React.FC<{
             assignedSedarim: newAssigned,
         }
     };
-
-    // If all sedarim are selected, we can remove the override
-    if (newAssigned.length === settings.sedarim.length) {
-        delete newScholarOverrides[result.name];
-    }
     
     const newSettings = { ...settings, scholarOverrides: newScholarOverrides };
     onUpdateSettings(newSettings);
 
-    // Recalculate stipend with new settings
-    const scholarData = { name: result.name, details: result.details || [], bonusData: {}}; // bonusData is not available for recalc here, but it's ok
+    const scholarData = { name: result.name, details: result.details || [], bonusData: {}}; // bonusData unavailable here but ok
     const newResult = calculateStipendForScholar(scholarData, newSettings, null, monthYear);
     onUpdateScholarResult(newResult);
+  };
+
+  const handleManualBonusChange = (bonusId: number, value: number) => {
+      const currentOverrides = settings.scholarOverrides?.[result.name] || {};
+      const currentManualBonuses = currentOverrides.manualBonuses || {};
+      
+      const newScholarOverrides = {
+          ...settings.scholarOverrides,
+          [result.name]: {
+              ...currentOverrides,
+              manualBonuses: {
+                  ...currentManualBonuses,
+                  [bonusId]: value
+              }
+          }
+      };
+      
+      const newSettings = { ...settings, scholarOverrides: newScholarOverrides };
+      onUpdateSettings(newSettings);
+
+      const scholarData = { name: result.name, details: result.details || [], bonusData: {}};
+      const newResult = calculateStipendForScholar(scholarData, newSettings, null, monthYear);
+      onUpdateScholarResult(newResult);
   };
 
   const handleApprovalChange = (dayIndex: number, sederId: number, type: 'absence' | 'lateness', isApproved: boolean) => {
@@ -82,20 +100,15 @@ const StipendDetailModal: React.FC<{
           if (!detail.isAbsenceApproved) detail.isAbsenceApproved = {};
           detail.isAbsenceApproved[sederId] = isApproved;
 
-          // New logic: Adjust approvedAbsenceHours
           if (!detail.approvedAbsenceHours) detail.approvedAbsenceHours = {};
-          const deficit = getDailyDeficit(detail, sederId); // deficit is based on actual hours
-          // When approving, we approve the entire deficit for that day.
+          const deficit = getDailyDeficit(detail, sederId); 
           detail.approvedAbsenceHours[sederId] = isApproved ? deficit : 0;
 
       } else {
           if (!detail.isLatenessApproved) detail.isLatenessApproved = {};
           detail.isLatenessApproved[sederId] = isApproved;
-          // Note: Lateness approval is handled separately in bonus calculation
-          // and doesn't affect approvedAbsenceHours for now.
       }
 
-      // Recalculate stipend with new details
       const scholarData = { name: result.name, details: newDetails, bonusData: {}};
       const newResult = calculateStipendForScholar(scholarData, settings, null, monthYear);
       onUpdateScholarResult(newResult);
@@ -103,6 +116,7 @@ const StipendDetailModal: React.FC<{
 
   const assignedSedarim = settings.scholarOverrides?.[result.name]?.assignedSedarim || settings.sedarim.map(s => s.id);
   const assignedSedarimDetails = settings.sedarim.filter(s => assignedSedarim.includes(s.id));
+  const scholarManualBonuses = settings.scholarOverrides?.[result.name]?.manualBonuses || {};
   
   const dailyRequiredHours = assignedSedarimDetails.reduce((total, seder) => {
     const start = timeToDecimal(seder.startTime);
@@ -117,7 +131,6 @@ const StipendDetailModal: React.FC<{
   const getCalculationSteps = () => {
     const steps = [];
     
-    // Improved Breakdown of Base Stipend Logic
     if (result.isHourlyFallbackApplied) {
         steps.push({
             label: `${t('base_stipend_label')} (${t('method_fallback')})`,
@@ -125,7 +138,6 @@ const StipendDetailModal: React.FC<{
             color: 'text-amber-600 dark:text-amber-400',
             sign: '+'
         });
-        // Detail how we got here
         steps.push({
             label: `${result.totalHours.toFixed(2)} ${t('hours')} * ₪${result.hourlyRateApplied} ${t('per_hour_label')}`,
             value: '',
@@ -194,10 +206,10 @@ const StipendDetailModal: React.FC<{
       steps.push({ label: t('bonuses_header'), value: '' });
       result.bonusDetails.forEach(bonus => {
         steps.push({
-          label: `${bonus.name} (${bonus.count})`,
+          label: `${bonus.name} ${bonus.count > 1 ? `(${bonus.count})` : ''}`,
           value: `₪${bonus.totalAmount.toFixed(2)}`,
-          color: 'text-blue-600 dark:text-blue-400',
-          sign: '+',
+          color: bonus.totalAmount > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500',
+          sign: bonus.totalAmount > 0 ? '+' : '',
           failures: bonus.failures
         });
       });
@@ -216,6 +228,9 @@ const StipendDetailModal: React.FC<{
 
     return steps;
   };
+
+  // Filter for manual bonuses to display
+  const manualBonusesConfig = settings.generalBonuses?.filter(b => b.inputMethod === 'manual_quantity' || b.inputMethod === 'manual_amount') || [];
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
@@ -240,7 +255,6 @@ const StipendDetailModal: React.FC<{
                         <span className={`text-slate-600 dark:text-slate-300 ${step.value === '' ? 'w-full' : ''}`}>{step.label}:</span>
                         {step.value && <span className={`font-mono font-medium ${step.color || ''}`}>{step.sign && <span className="mr-1">{step.sign}</span>}{step.value}</span>}
                       </div>
-                      {/* Show failures/lates if present in step data */}
                       {step.failures !== undefined && step.failures > 0 && (
                           <div className="text-xs text-red-500 mt-0.5 mr-2">
                              {t('bonus_failures')} {step.failures}
@@ -258,16 +272,42 @@ const StipendDetailModal: React.FC<{
 
               {/* Right Column: Details & Exceptions */}
               <div className="space-y-4">
+                  {/* Manual Bonuses Section - Visible */}
+                  {manualBonusesConfig.length > 0 && (
+                    <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-white dark:bg-slate-800 shadow-sm">
+                        <div className="flex items-center gap-2 mb-3 text-indigo-600 dark:text-indigo-400">
+                            <CoinsIcon className="w-5 h-5" />
+                            <h5 className="font-semibold">תוספות ובונוסים ידניים</h5>
+                        </div>
+                        <div className="space-y-3">
+                            {manualBonusesConfig.map(bonus => (
+                                <div key={bonus.id} className="flex items-center justify-between text-sm">
+                                    <span className="font-medium text-slate-700 dark:text-slate-300">{bonus.name} ({bonus.inputMethod === 'manual_quantity' ? `₪${bonus.amount} ליח'` : 'סכום'}):</span>
+                                    <div className="flex items-center gap-1">
+                                        <input 
+                                            type="number" 
+                                            value={scholarManualBonuses[bonus.id] || ''} 
+                                            onChange={(e) => handleManualBonusChange(bonus.id, Number(e.target.value))}
+                                            className="p-1.5 border border-slate-300 dark:border-slate-600 rounded w-24 text-center bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                  )}
+
                   {/* Exception Management Accordion */}
                   <div className="border border-slate-200 dark:border-slate-700 rounded-lg">
-                      <button onClick={() => setIsExceptionsOpen(!isExceptionsOpen)} className="w-full flex justify-between items-center p-3 bg-slate-100 dark:bg-slate-700/50">
+                      <button onClick={() => setIsExceptionsOpen(!isExceptionsOpen)} className="w-full flex justify-between items-center p-3 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50 transition-colors">
                           <div className="flex items-center gap-2 font-semibold">
                               <AdjustmentsIcon className="w-5 h-5 text-indigo-500" />
                               <span>{t('exceptions_management')}</span>
                           </div>
                           <ChevronIcon className={`w-5 h-5 transition-transform ${isExceptionsOpen ? 'rotate-180' : ''}`} />
                       </button>
-                      {isExceptionsOpen && <div className="p-4 space-y-4 animate-fade-in">
+                      {isExceptionsOpen && <div className="p-4 space-y-4 animate-fade-in border-t border-slate-200 dark:border-slate-700">
                           <div>
                               <h5 className="font-semibold mb-2">{t('fixed_sedarim')}</h5>
                               <p className="text-xs text-slate-500 mb-2">{t('fixed_sedarim_desc')}</p>
@@ -296,17 +336,13 @@ const StipendDetailModal: React.FC<{
                     {result.details && result.details.length > 0 ? (
                       <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
                         {(result.details as DailyDetail[]).map((detail, i) => {
-                            // Fix: Explicitly type sum and h in reduce and handle sederHours as potential null
                             const dailyTotalHours = Object.values(detail.sederHours || {}).reduce((sum: number, h: number) => sum + h, 0);
-                            
                             const isAbsent = detail.rawTime === 'נעדר';
-                            
                             return (
                                 <div key={i} className={`p-3 rounded-lg text-sm ${isAbsent ? 'bg-red-50 dark:bg-red-900/20' : 'bg-slate-100 dark:bg-slate-700/50'}`}>
                                     <div className="flex justify-between items-center font-bold">
                                         <span>{detail.day}</span>
                                         <span className={isAbsent ? 'text-red-600 dark:text-red-400' : ''}>{detail.rawTime || t('absent')}</span>
-                                        {/* Fix: Explicitly cast dailyTotalHours to number to call toFixed */}
                                         <span className="font-mono">{Number(dailyTotalHours) > 0 ? `${Number(dailyTotalHours).toFixed(2)} ${t('hours')}` : '-'}</span>
                                     </div>
                                     <div className="mt-2 space-y-1">

@@ -1,3 +1,4 @@
+
 import type { KollelDetails, MonthlyData, StipendSettings } from '../types';
 
 /**
@@ -26,7 +27,7 @@ const createAuthHeaders = (): HeadersInit => {
 /**
  * Checks if the app is running in an environment that should use localStorage.
  * This is a simple check for being inside an iframe, typical for platforms like AI Studio.
- * @returns {boolean} True if it's likely an iframe environment, false otherwise.
+ * @returns {boolean} True if it's a frontend-only environment, false otherwise.
  */
 const isStudioEnv = (): boolean => {
     // For development, always use the server API - no exceptions
@@ -374,7 +375,7 @@ export const deleteMonthlyData = async (kollelId: string, monthYearToDelete: str
         // SERVER-SIDE IMPLEMENTATION
         console.log(`API: Deleting monthly data for kollel ${kollelId} on server...`);
         try {
-            const monthYearParam = monthYearToDelete.replace('/', '-');
+            const monthYearParam = monthYearToDelete.replace(/\//g, '-');
             const response = await fetch(`${API_BASE_URL}/kollels/${kollelId}/data/${monthYearParam}`, {
                 method: 'DELETE',
                 headers: createAuthHeaders(),

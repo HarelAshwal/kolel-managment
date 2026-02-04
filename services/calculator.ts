@@ -108,8 +108,6 @@ export const calculateStipendForScholar = (
             if (detail) { 
                 let attendedHours = detail.sederHours[seder.id] || 0;
                 
-                // NOTE: Tolerance logic removed as per user request to calculate based on raw hours only.
-                
                 // Update the detail to ensure consistency
                 detail.sederHours[seder.id] = attendedHours;
                 
@@ -130,12 +128,10 @@ export const calculateStipendForScholar = (
         const sederHourDeficit = Math.max(0, sederRequiredHours - sederTotalCreditedHours);
         
         // Use a single deduction rate for everything (High Rate as standard)
-        // User requested removing 'Low Rate' and having one field.
         const deductionRate = rules.highRate;
 
         const sederDeduction = sederHourDeficit * deductionRate;
 
-        // Calculate deductions regardless of calculation method first
         totalDeduction += sederDeduction;
         if (sederHourDeficit > 0.01) { 
             deductionDetails.push({ sederName: seder.name, deficit: sederHourDeficit, rate: deductionRate, total: sederDeduction });
@@ -158,19 +154,16 @@ export const calculateStipendForScholar = (
             totalDeduction = 0;
             deductionDetails.length = 0; 
         } 
-        // If overallAttendancePercentage >= threshold:
-        // We use the baseStipend (calculated at start) AND apply the totalDeduction calculated in loop.
     }
 
     let totalBonus = 0;
     const bonusDetails: any[] = [];
     let totalApprovedLatenessCount = 0;
     
+    // Punctuality Bonuses
     assignedSedarim.forEach(seder => {
         if (!seder.punctualityBonusEnabled) return;
         
-        // CHANGE: If hourly fallback is active, we IGNORE the global bonus threshold check.
-        // We let the specific tables/tiers decide.
         if (settings.bonusAttendanceThresholdEnabled && 
             overallAttendancePercentage < settings.bonusAttendanceThresholdPercent && 
             !isHourlyFallbackApplied) {
@@ -178,9 +171,8 @@ export const calculateStipendForScholar = (
         }
 
         const isSederA = seder.name.includes("א'");
-        let failureCount = 0; // absences or hours deficit depending on model
+        let failureCount = 0; 
         let successCount = 0;
-
         let sederTotalActualHoursLocal = 0;
         let sederTotalApprovedHoursLocal = 0;
 
@@ -207,9 +199,6 @@ export const calculateStipendForScholar = (
              if (isLate && approvedLate) totalApprovedLatenessCount++;
         });
 
-        // Use total deficit hours as failure count for tiered logic if relevant
-        const totalSederDeficit = Math.max(0, (workingDaysCount * (timeToDecimal(seder.endTime) - timeToDecimal(seder.startTime))) - (sederTotalActualHoursLocal + sederTotalApprovedHoursLocal));
-
         let bonusRate = seder.punctualityBonusAmount;
         let bonusName = `שמירת ${seder.name}`;
 
@@ -217,7 +206,6 @@ export const calculateStipendForScholar = (
         if (tiers && tiers.length > 0) {
             bonusRate = 0;
             const sortedTiers = [...tiers].sort((a, b) => a.maxFailures - b.maxFailures);
-            // Comparison based on failures (absences/lates). Use hours if needed.
             const metric = failureCount; 
             for (const tier of sortedTiers) {
                 if (metric <= tier.maxFailures) {
@@ -236,29 +224,78 @@ export const calculateStipendForScholar = (
         }
     });
 
+    // General Bonuses (Excel & Manual)
     (settings.generalBonuses || []).forEach(bonusDef => {
-        const val = bonusData[bonusDef.name] || 0;
-        if (val <= 0) return;
+        const inputMethod = bonusDef.inputMethod || 'excel'; // default to excel for backward compat
+        
+        let rawValue = 0;
+        let isManual = false;
+
+        if (inputMethod === 'excel') {
+             rawValue = bonusData[bonusDef.name] || 0;
+        } else if (inputMethod === 'manual_quantity' || inputMethod === 'manual_amount') {
+             rawValue = scholarOverrides?.manualBonuses?.[bonusDef.id] || 0;
+             isManual = true;
+        }
+        
+        if (rawValue <= 0) return;
+
+        let calculatedAmount = 0;
+        let displayCount = 0;
+
+        if (inputMethod === 'manual_amount') {
+             calculatedAmount = rawValue;
+             displayCount = 1; 
+        } else {
+             // 'excel' or 'manual_quantity' -> Multiply by rate
+             calculatedAmount = rawValue * bonusDef.amount;
+             displayCount = rawValue;
+        }
+
+        // Apply Attendance Conditions
         let multiplier = 1;
+        let conditionMet = true;
+        
+        // Skip condition check if hourly fallback is active and conditions shouldn't apply? 
+        // Usually, bonuses are stricter, so we keep checking.
+        
         if (bonusDef.attendanceConditionType === 'global') {
-             // We keep the global restriction for general bonuses unless specifically requested otherwise,
-             // but technically the user prompt focused on 'The table of bonus cancellation tiers', which refers to Punctuality.
-             // If general bonuses should also be allowed in hourly mode, uncomment the part in parentheses:
-             if (overallAttendancePercentage < settings.bonusAttendanceThresholdPercent /* && !isHourlyFallbackApplied */) multiplier = 0;
+             if (overallAttendancePercentage < settings.bonusAttendanceThresholdPercent) {
+                 multiplier = 0;
+                 conditionMet = false;
+             }
         } else if (bonusDef.attendanceConditionType === 'custom' && bonusDef.customConditions?.length) {
              multiplier = 0;
              const sorted = [...bonusDef.customConditions].sort((a, b) => b.threshold - a.threshold);
+             let found = false;
              for (const c of sorted) {
                  if (overallAttendancePercentage >= c.threshold) {
                      multiplier = c.percent / 100;
+                     found = true;
                      break;
                  }
              }
+             if (!found && sorted.length > 0) conditionMet = false;
         } 
-        if (multiplier > 0) {
-            const amt = (bonusDef.bonusType === 'count' ? val * bonusDef.amount : val) * multiplier;
-            totalBonus += amt;
-            bonusDetails.push({ name: bonusDef.name + (multiplier < 1 ? ` (${(multiplier * 100).toFixed(0)}%)` : ''), count: bonusDef.bonusType === 'count' ? val : 1, totalAmount: amt });
+        
+        const finalAmount = calculatedAmount * multiplier;
+        
+        if (finalAmount > 0 || (isManual && rawValue > 0)) {
+             let displayName = bonusDef.name;
+             if (!conditionMet) {
+                 displayName += ` (בוטל - נוכחות ${overallAttendancePercentage.toFixed(1)}%)`;
+             } else if (multiplier < 1) {
+                 displayName += ` (${(multiplier * 100).toFixed(0)}%)`;
+             }
+
+             if (isManual || finalAmount > 0) {
+                 totalBonus += finalAmount;
+                 bonusDetails.push({ 
+                     name: displayName, 
+                     count: displayCount, 
+                     totalAmount: finalAmount 
+                 });
+             }
         }
     });
     
@@ -270,7 +307,6 @@ export const calculateStipendForScholar = (
         totalHours: totalActualHours,
         stipend: Math.max(0, finalStipend),
         details: Array.from(detailsByDay.values()).sort((a,b) => {
-             // Improved sort safe parsing
              const dayA = parseInt(a.day.match(/^\d+/)?.[0] || '0', 10);
              const dayB = parseInt(b.day.match(/^\d+/)?.[0] || '0', 10);
              return dayA - dayB;

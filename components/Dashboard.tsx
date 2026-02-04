@@ -40,6 +40,11 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
   const [fileName, setFileName] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isDataLoading, setIsDataLoading] = useState<boolean>(true);
+  
+  // Custom Confirmation Modal State
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
+  const [monthToDelete, setMonthToDelete] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -68,13 +73,13 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
 
     loadSavedData();
     
-    // Reset view state when kollel changes
+    // Reset view state when kollel ID changes (not on every settings update)
     setView('CHOICE');
     setStipendResults(null);
     setMonthYear(null);
     setError('');
     setFileName('');
-  }, [kollelDetails, t]);
+  }, [kollelDetails.id, t]); // Changed dependency from kollelDetails to kollelDetails.id
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -156,7 +161,9 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
       setSavedData(prev => [...prev, newData].sort((a, b) => b.monthYear.localeCompare(a.monthYear)));
     } catch (err) {
       console.error("Failed to save monthly data", err);
-      alert(t('error'));
+      // Fallback for alert in sandboxed environments if needed, though usually alert is okay if confirms are blocked, 
+      // sometimes both are. Ideally use custom UI for errors too.
+      setError(t('error'));
     }
   };
 
@@ -168,15 +175,24 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
     setView('SHOW_RESULTS');
   };
 
-  const handleDeleteMonth = async (monthYearToDelete: string) => {
-    if (window.confirm(t('delete_month_confirm').replace('{0}', monthYearToDelete))) {
-      try {
-        await deleteMonthlyData(kollelDetails.id, monthYearToDelete);
-        setSavedData(prev => prev.filter(d => d.monthYear !== monthYearToDelete));
-      } catch (err) {
-        console.error("Failed to delete monthly data", err);
-        alert(t('error'));
-      }
+  const handleDeleteClick = (e: React.MouseEvent, monthYearToDelete: string) => {
+    e.stopPropagation();
+    setMonthToDelete(monthYearToDelete);
+    setShowDeleteConfirm(true);
+  };
+
+  const executeDeleteMonth = async () => {
+    if (!monthToDelete) return;
+    
+    try {
+      await deleteMonthlyData(kollelDetails.id, monthToDelete);
+      setSavedData(prev => prev.filter(d => d.monthYear !== monthToDelete));
+      setShowDeleteConfirm(false);
+      setMonthToDelete(null);
+    } catch (err) {
+      console.error("Failed to delete monthly data", err);
+      setError(t('error'));
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -261,7 +277,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
     );
   };
   const renderSavedView = () => (
-    <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-8 w-full max-w-2xl">
+    <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-8 w-full max-w-2xl relative">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-semibold">{t('load_saved_data')}</h2>
         <button onClick={resetToChoice} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" title={t('cancel')}>
@@ -273,7 +289,12 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
           <div key={data.monthYear} className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg flex items-center justify-between gap-4">
             <span className="font-bold text-slate-800 dark:text-slate-100">{t('month')} {data.monthYear}</span>
             <div className="flex items-center gap-2">
-              <button onClick={() => handleDeleteMonth(data.monthYear)} className="p-2 text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors" title={t('delete')}>
+              <button 
+                type="button"
+                onClick={(e) => handleDeleteClick(e, data.monthYear)} 
+                className="p-2 text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors" 
+                title={t('delete')}
+              >
                 <TrashIcon className="w-5 h-5" />
               </button>
               <button onClick={() => handleLoadMonth(data)} className="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg shadow-sm hover:bg-indigo-700">
@@ -283,6 +304,32 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
           </div>
         ))}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-sm transform transition-all scale-100">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{t('delete')}</h3>
+            <p className="text-slate-600 dark:text-slate-300 mb-6">
+              {t('delete_month_confirm').replace('{0}', monthToDelete || '')}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                {t('cancel')}
+              </button>
+              <button 
+                onClick={executeDeleteMonth}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium"
+              >
+                {t('yes')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
