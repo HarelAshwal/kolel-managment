@@ -389,6 +389,62 @@ export const deleteMonthlyData = async (kollelId: string, monthYearToDelete: str
 };
 
 /**
+ * Exports all data for a specific kollel (Details + Monthly Data).
+ */
+export const exportFullKollel = async (kollelId: string): Promise<{ kollel: KollelDetails, data: MonthlyData[] }> => {
+    try {
+        const kollels = await getKollels();
+        const kollel = kollels.find(k => k.id === kollelId);
+        if (!kollel) throw new Error("Kollel not found");
+        
+        const data = await getSavedData(kollelId);
+        
+        // Remove DB specific IDs to ensure clean export
+        const cleanKollel = { ...kollel };
+        // @ts-ignore
+        delete cleanKollel._id;
+        
+        return { kollel: cleanKollel, data };
+    } catch (e) {
+        console.error("Export failed", e);
+        throw e;
+    }
+};
+
+/**
+ * Imports a full kollel backup.
+ * Creates a NEW Kollel entry to avoid ID conflicts and associates the data with it.
+ */
+export const importFullKollel = async (backupData: { kollel: KollelDetails, data: MonthlyData[] }): Promise<void> => {
+    try {
+        // 1. Create new Kollel (this will generate a new ID in the backend)
+        const newKollelPayload = {
+            ...backupData.kollel,
+            name: `${backupData.kollel.name} (Imported)`, // Distinct name
+            id: undefined // Let backend generate ID
+        };
+        
+        // Remove any old IDs from the payload
+        // @ts-ignore
+        delete newKollelPayload._id; 
+        // @ts-ignore
+        delete newKollelPayload.id;
+
+        const newKollel = await addKollel(newKollelPayload as any);
+        console.log("Import: Created new kollel", newKollel.id);
+
+        // 2. Save all monthly reports to the new ID
+        for (const monthData of backupData.data) {
+            await saveMonthlyData(newKollel.id, monthData);
+        }
+        console.log("Import: Saved all monthly data");
+    } catch (e) {
+        console.error("Import failed", e);
+        throw e;
+    }
+};
+
+/**
  * Sends a natural language prompt to the backend to generate stipend settings using AI.
  * @param prompt The user's description of the stipend calculation.
  * @returns A promise that resolves to a StipendSettings object.

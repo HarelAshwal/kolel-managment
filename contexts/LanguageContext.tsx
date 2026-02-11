@@ -49,6 +49,10 @@ const translations = {
     "shared_with": "שותף עם:",
     "base_amount": "סכום בסיס:",
     "delete_confirm": "האם אתה בטוח שברצונך למחוק את הכולל? לא ניתן לשחזר פעולה זו.",
+    "backup_kollel": "גיבוי כולל",
+    "restore_kollel": "שחזור/ייבוא מגיבוי",
+    "backup_success": "הגיבוי ירד בהצלחה!",
+    "restore_success": "הכולל שוחזר בהצלחה!",
 
     // Setup
     "setup_title_new": "הגדרת כולל חדש",
@@ -288,6 +292,10 @@ const translations = {
     "shared_with": "Shared with:",
     "base_amount": "Base Amount:",
     "delete_confirm": "Are you sure you want to delete this Kollel? This action cannot be undone.",
+    "backup_kollel": "Backup Kollel",
+    "restore_kollel": "Restore/Import Backup",
+    "backup_success": "Backup downloaded successfully!",
+    "restore_success": "Kollel restored successfully!",
 
     // Setup
     "setup_title_new": "New Kollel Setup",

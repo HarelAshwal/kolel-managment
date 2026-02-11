@@ -240,7 +240,15 @@ const AppContent: React.FC = () => {
 
     switch (appState) {
       case 'SELECT_KOLLEL':
-        return <KollelSelection kollels={kollels} onSelect={handleSelectKollel} onAdd={handleGoToSetup} onDelete={handleDeleteKollel} onEdit={handleStartEdit} isSuperAdmin={user?.isSuperAdmin} />;
+        return <KollelSelection 
+                  kollels={kollels} 
+                  onSelect={handleSelectKollel} 
+                  onAdd={handleGoToSetup} 
+                  onDelete={handleDeleteKollel} 
+                  onEdit={handleStartEdit} 
+                  onImport={loadKollels}
+                  isSuperAdmin={user?.isSuperAdmin} 
+                />;
       case 'SETUP_KOLLEL':
         return <KollelSetup
           onSetupComplete={handleSetupComplete}
@@ -264,6 +272,7 @@ const AppContent: React.FC = () => {
           onAdd={handleGoToSetup}
           onDelete={handleDeleteKollel}
           onEdit={handleStartEdit}
+          onImport={loadKollels}
           isSuperAdmin={user?.isSuperAdmin}
         />;
     }

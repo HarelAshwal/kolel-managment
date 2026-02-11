@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useRef } from 'react';
 import type { KollelDetails } from '../types';
 import { BuildingIcon } from './icons/BuildingIcon';
 import { ShekelIcon } from './icons/ShekelIcon';
@@ -7,7 +7,10 @@ import { TrashIcon } from './icons/TrashIcon';
 import { PlusIcon } from './icons/PlusIcon';
 import { EditIcon } from './icons/EditIcon';
 import { UserIcon } from './icons/UserIcon';
+import { DatabaseIcon } from './icons/DatabaseIcon'; // New icon for backup
+import { UploadIcon } from './icons/UploadIcon';
 import { useLanguage } from '../contexts/LanguageContext';
+import { exportFullKollel, importFullKollel } from '../services/api';
 
 interface KollelSelectionProps {
   kollels: KollelDetails[];
@@ -15,11 +18,13 @@ interface KollelSelectionProps {
   onDelete: (kollelId: string) => void;
   onAdd: () => void;
   onEdit: (kollelId: string) => void;
+  onImport?: () => void; // New prop to refresh data after import
   isSuperAdmin?: boolean;
 }
 
-const KollelSelection: React.FC<KollelSelectionProps> = ({ kollels, onSelect, onDelete, onAdd, onEdit, isSuperAdmin }) => {
+const KollelSelection: React.FC<KollelSelectionProps> = ({ kollels, onSelect, onDelete, onAdd, onEdit, onImport, isSuperAdmin }) => {
   const { t } = useLanguage();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Debug logging for super admin
   if (isSuperAdmin) {
@@ -39,6 +44,56 @@ const KollelSelection: React.FC<KollelSelectionProps> = ({ kollels, onSelect, on
           return t('select_kollel_admin_subtitle').replace('{0}', kollels.length.toString());
       }
       return t('select_kollel_subtitle');
+  };
+
+  const handleBackup = async (kollelId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      try {
+          const data = await exportFullKollel(kollelId);
+          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+          const downloadAnchorNode = document.createElement('a');
+          downloadAnchorNode.setAttribute("href", dataStr);
+          downloadAnchorNode.setAttribute("download", `backup_${data.kollel.name}_${new Date().toISOString().slice(0, 10)}.json`);
+          document.body.appendChild(downloadAnchorNode);
+          downloadAnchorNode.click();
+          downloadAnchorNode.remove();
+          // Optional: Show success toast
+          // alert(t('backup_success')); 
+      } catch (err) {
+          console.error("Backup failed", err);
+          alert(t('error'));
+      }
+  };
+
+  const handleImportClick = () => {
+      if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+          fileInputRef.current.click();
+      }
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+          try {
+              const content = e.target?.result;
+              if (typeof content === 'string') {
+                  const backupData = JSON.parse(content);
+                  if (!backupData.kollel || !backupData.data) throw new Error("Invalid backup file");
+                  
+                  await importFullKollel(backupData);
+                  alert(t('restore_success'));
+                  if (onImport) onImport();
+              }
+          } catch (err) {
+              console.error('Failed to import backup', err);
+              alert(t('error'));
+          }
+      };
+      reader.readAsText(file);
   };
 
   return (
@@ -93,6 +148,13 @@ const KollelSelection: React.FC<KollelSelectionProps> = ({ kollels, onSelect, on
               </div>
               <div className="flex items-center gap-1 sm:gap-2">
                 <button
+                  onClick={(e) => handleBackup(kollel.id, e)}
+                  className="p-2 text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors"
+                  title={t('backup_kollel')}
+                >
+                  <DatabaseIcon className="w-5 h-5" />
+                </button>
+                <button
                   onClick={() => onEdit(kollel.id)}
                   className="p-2 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
                   title={t('edit')}
@@ -120,13 +182,30 @@ const KollelSelection: React.FC<KollelSelectionProps> = ({ kollels, onSelect, on
         )}
       </div>
 
-      <button
-        onClick={onAdd}
-        className="w-full flex items-center justify-center gap-2 py-3 px-4 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-md shadow-sm text-sm font-medium text-slate-700 dark:text-slate-200 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-300"
-      >
-        <PlusIcon className="w-5 h-5" />
-        {t('add_new_kollel')}
-      </button>
+      <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={onAdd}
+            className="flex-1 flex items-center justify-center gap-2 py-3 px-4 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-md shadow-sm text-sm font-medium text-slate-700 dark:text-slate-200 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-300"
+          >
+            <PlusIcon className="w-5 h-5" />
+            {t('add_new_kollel')}
+          </button>
+          
+          <button
+            onClick={handleImportClick}
+            className="flex-1 flex items-center justify-center gap-2 py-3 px-4 border border-slate-200 dark:border-slate-600 rounded-md shadow-sm text-sm font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 focus:outline-none transition-colors duration-300"
+          >
+            <UploadIcon className="w-5 h-5" />
+            {t('restore_kollel')}
+          </button>
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileChange} 
+            className="hidden" 
+            accept=".json"
+          />
+      </div>
     </div>
   );
 };
