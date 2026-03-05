@@ -240,8 +240,9 @@ export const updateKollel = async (updatedKollel: KollelDetails): Promise<Kollel
         // SERVER-SIDE IMPLEMENTATION
         console.log(`API: Updating kollel ${updatedKollel.id} on server...`);
         try {
-            // Prepare data for backend - remove id and let MongoDB handle _id
-            const { id, ...dataForBackend } = updatedKollel;
+            // Prepare data for backend - remove id and userId (userId must never be overwritten
+            // as the backend returns it as a populated object, which would corrupt the ObjectId ref)
+            const { id, userId, ...dataForBackend } = updatedKollel as any;
 
             // Fix: Corrected variable from 'updatedKoll_id' to 'updatedKollel.id'.
             const response = await fetch(`${API_BASE_URL}/kollels/${updatedKollel.id}`, {
