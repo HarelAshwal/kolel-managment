@@ -26,13 +26,13 @@ const translations = {
     "yes": "כן",
     "no": "לא",
     "close": "סגור",
-    
+
     // Login
     "welcome_title": "מערכת ניהול כולל",
     "welcome_subtitle": "ברוכים הבאים! אנא התחברו כדי להמשיך.",
     "login_google": "התחברות עם גוגל",
     "login_terms": "על ידי התחברות, אתם מסכימים לתנאי השימוש ומדיניות הפרטיות.",
-    
+
     // Header
     "logout": "התנתקות",
     "admin_badge": "מנהל",
@@ -83,11 +83,12 @@ const translations = {
     "download_template": "הורד תבנית עבודה",
     "processing": "מעבד את",
     "file_error": "יש להעלות קובץ מסוג XLSX או XLS בלבד.",
-    
+
     // Results & Attendance Table
     "results_for": "תוצאות עבור חודש",
     "save_month": "שמור נתוני חודש",
     "data_saved": "הנתונים נשמרו",
+    "update_month": "עדכן נתוני חודש",
     "export_csv": "ייצוא דוח כללי",
     "table_scholar": "שם האברך",
     "table_hours": "סה\"כ שעות לימוד",
@@ -138,7 +139,7 @@ const translations = {
     "month": "חודש",
     "load_btn": "טעינה",
     "delete_month_confirm": "האם אתה בטוח שברצונך למחוק את הנתונים עבור חודש {0}? לא ניתן לשחזר פעולה זו.",
-    
+
     // Settings Component
     "settings_title": "הגדרות מלגה",
     "manual_edit": "עריכה ידנית",
@@ -231,7 +232,7 @@ const translations = {
     "help_bonus_attendance": "התניית קבלת הבונוס באחוז נוכחות חודשי כולל.",
     "help_bonus_name": "שם הבונוס כפי שמופיע בקובץ האקסל (למשל 'מבחן')",
     "help_bonus_amount": "הסכום לתשלום עבור כל יחידת בונוס",
-    
+
     // Reports
     "reports_title": "דוחות וניתוחים",
     "back": "חזרה",
@@ -331,6 +332,7 @@ const translations = {
     "results_for": "Results for",
     "save_month": "Save Month Data",
     "data_saved": "Data Saved",
+    "update_month": "Update Month Data",
     "export_csv": "Export CSV",
     "table_scholar": "Scholar Name",
     "table_hours": "Total Hours",
@@ -474,7 +476,7 @@ const translations = {
     "help_bonus_attendance": "Condition bonus on overall monthly attendance %.",
     "help_bonus_name": "Name as it appears in Excel (e.g. 'Exam')",
     "help_bonus_amount": "Amount to pay per bonus unit",
-    
+
     // Reports
     "reports_title": "דוחות וניתוחים",
     "back": "חזרה",
@@ -510,13 +512,13 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     // 2. Check browser language
     try {
-        const browserLang = navigator.language.toLowerCase();
-        // Only if browser is explicitly English, use English
-        if (browserLang.startsWith('en')) {
-            return 'en';
-        }
+      const browserLang = navigator.language.toLowerCase();
+      // Only if browser is explicitly English, use English
+      if (browserLang.startsWith('en')) {
+        return 'en';
+      }
     } catch (e) {
-        console.warn('Could not detect browser language', e);
+      console.warn('Could not detect browser language', e);
     }
 
     // 3. Default to Hebrew for everyone else (including unknown)

@@ -40,7 +40,9 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
   const [fileName, setFileName] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isDataLoading, setIsDataLoading] = useState<boolean>(true);
-  
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
+
   // Custom Confirmation Modal State
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
   const [monthToDelete, setMonthToDelete] = useState<string | null>(null);
@@ -72,7 +74,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
     };
 
     loadSavedData();
-    
+
     // Reset view state when kollel ID changes (not on every settings update)
     setView('CHOICE');
     setStipendResults(null);
@@ -152,18 +154,25 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
   };
 
   const handleSaveCurrentMonth = async () => {
-    if (!monthYear || !stipendResults) return;
-    if (savedData.some(d => d.monthYear === monthYear)) return;
+    if (!monthYear || !stipendResults || isSaving) return;
 
+    setIsSaving(true);
+    setSaveSuccess(false);
+    setError('');
     const newData: MonthlyData = { monthYear, results: stipendResults };
     try {
       await saveMonthlyData(kollelDetails.id, newData);
-      setSavedData(prev => [...prev, newData].sort((a, b) => b.monthYear.localeCompare(a.monthYear)));
+      setSavedData(prev => {
+        const filtered = prev.filter(d => d.monthYear !== newData.monthYear);
+        return [...filtered, newData].sort((a, b) => b.monthYear.localeCompare(a.monthYear));
+      });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to save monthly data", err);
-      // Fallback for alert in sandboxed environments if needed, though usually alert is okay if confirms are blocked, 
-      // sometimes both are. Ideally use custom UI for errors too.
       setError(t('error'));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -183,7 +192,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
 
   const executeDeleteMonth = async () => {
     if (!monthToDelete) return;
-    
+
     try {
       await deleteMonthlyData(kollelDetails.id, monthToDelete);
       setSavedData(prev => prev.filter(d => d.monthYear !== monthToDelete));
@@ -220,20 +229,20 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
     return (
       <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-8 text-center">
         <h2 className="text-2xl font-semibold mb-6">{t('dashboard_title')}</h2>
-        
+
         {/* Template Download Section */}
         <div className="mb-8 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-             <div className={`${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
-                 <h3 className="font-bold text-blue-800 dark:text-blue-300">{t('template_title')}</h3>
-                 <p className="text-sm text-blue-600 dark:text-blue-400">{t('template_desc')}</p>
-             </div>
-             <button 
-                onClick={generateAndDownloadTemplate}
-                className="flex items-center gap-2 bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700 px-4 py-2 rounded-md hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors shadow-sm font-medium whitespace-nowrap"
-             >
-                 <FileExcelIcon className="w-5 h-5" />
-                 {t('download_template')}
-             </button>
+          <div className={`${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
+            <h3 className="font-bold text-blue-800 dark:text-blue-300">{t('template_title')}</h3>
+            <p className="text-sm text-blue-600 dark:text-blue-400">{t('template_desc')}</p>
+          </div>
+          <button
+            onClick={generateAndDownloadTemplate}
+            className="flex items-center gap-2 bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700 px-4 py-2 rounded-md hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors shadow-sm font-medium whitespace-nowrap"
+          >
+            <FileExcelIcon className="w-5 h-5" />
+            {t('download_template')}
+          </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -289,10 +298,10 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
           <div key={data.monthYear} className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg flex items-center justify-between gap-4">
             <span className="font-bold text-slate-800 dark:text-slate-100">{t('month')} {data.monthYear}</span>
             <div className="flex items-center gap-2">
-              <button 
+              <button
                 type="button"
-                onClick={(e) => handleDeleteClick(e, data.monthYear)} 
-                className="p-2 text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors" 
+                onClick={(e) => handleDeleteClick(e, data.monthYear)}
+                className="p-2 text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
                 title={t('delete')}
               >
                 <TrashIcon className="w-5 h-5" />
@@ -314,13 +323,13 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
               {t('delete_month_confirm').replace('{0}', monthToDelete || '')}
             </p>
             <div className="flex justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setShowDeleteConfirm(false)}
                 className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
               >
                 {t('cancel')}
               </button>
-              <button 
+              <button
                 onClick={executeDeleteMonth}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium"
               >
@@ -348,11 +357,14 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
         <div className="flex items-center gap-2 self-end sm:self-center">
           <button
             onClick={handleSaveCurrentMonth}
-            disabled={isCurrentMonthSaved}
-            className="flex items-center gap-2 bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-300 disabled:bg-blue-400 disabled:cursor-not-allowed"
+            disabled={isSaving}
+            className={`flex items-center gap-2 font-semibold py-2 px-4 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-300 ${saveSuccess
+                ? 'bg-green-600 text-white focus:ring-green-500'
+                : 'bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500 disabled:opacity-70 disabled:cursor-not-allowed'
+              }`}
           >
             <SaveIcon className="w-5 h-5" />
-            {isCurrentMonthSaved ? t('data_saved') : t('save_month')}
+            {isSaving ? t('loading') : saveSuccess ? t('data_saved') : isCurrentMonthSaved ? t('update_month') : t('save_month')}
           </button>
           <button
             onClick={handleExportSummary}
@@ -363,12 +375,18 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
           </button>
         </div>
       </div>
-      {stipendResults && monthYear && <AttendanceTable 
-          results={stipendResults} 
-          kollelDetails={kollelDetails} 
-          monthYear={monthYear}
-          onUpdateScholarResult={handleUpdateScholarResult}
-          onUpdateSettings={onUpdateSettings}
+      {error && (
+        <div className={`mb-4 bg-red-100 dark:bg-red-900/30 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg ${dir === 'rtl' ? 'text-right border-r-4' : 'text-left border-l-4'}`} role="alert">
+          <p className="font-bold">{t('error')}</p>
+          <p>{error}</p>
+        </div>
+      )}
+      {stipendResults && monthYear && <AttendanceTable
+        results={stipendResults}
+        kollelDetails={kollelDetails}
+        monthYear={monthYear}
+        onUpdateScholarResult={handleUpdateScholarResult}
+        onUpdateSettings={onUpdateSettings}
       />}
     </div>
   );
