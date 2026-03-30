@@ -83,6 +83,11 @@ const translations = {
     "download_template": "הורד תבנית עבודה",
     "processing": "מעבד את",
     "file_error": "יש להעלות קובץ מסוג XLSX או XLS בלבד.",
+    "select_active_days": "בחירת ימי פעילות",
+    "select_active_days_desc": "בחר את הימים שייכללו בחישוב המלגות. ימים שלא יסומנו ייחשבו כימי חופש ולא ירדו עליהם קנסות.",
+    "select_all": "בחר הכל",
+    "deselect_all": "נקה הכל",
+    "calculate": "חשב מלגות",
 
     // Results & Attendance Table
     "results_for": "תוצאות עבור חודש",
@@ -327,6 +332,11 @@ const translations = {
     "download_template": "Download Template",
     "processing": "Processing",
     "file_error": "Please upload XLSX or XLS files only.",
+    "select_active_days": "Select Active Days",
+    "select_active_days_desc": "Select the days to be included in the stipend calculation. Unchecked days will be considered holidays and will not incur penalties.",
+    "select_all": "Select All",
+    "deselect_all": "Deselect All",
+    "calculate": "Calculate Stipends",
 
     // Results & Attendance Table
     "results_for": "Results for",

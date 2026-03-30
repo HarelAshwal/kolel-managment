@@ -1,7 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import type { KollelDetails, StipendResult, MonthlyData, StipendSettings } from '../types';
-import { parseXlsxAndCalculateStipends } from '../services/parser';
+import { parseXlsx } from '../services/parser';
+import { calculateStipendForScholar, getDayOfWeek } from '../services/calculator';
 import { exportSummaryToCsv } from '../services/exporter';
 import { getSavedData, saveMonthlyData, deleteMonthlyData } from '../services/api';
 import { generateAndDownloadTemplate } from '../services/templateGenerator';
@@ -27,7 +28,7 @@ interface DashboardProps {
   onUpdateSettings: (settings: StipendSettings) => void;
 }
 
-type DashboardView = 'CHOICE' | 'VIEW_SAVED' | 'SHOW_RESULTS' | 'REPORTS' | 'STIPEND_SETTINGS';
+type DashboardView = 'CHOICE' | 'VIEW_SAVED' | 'SHOW_RESULTS' | 'REPORTS' | 'STIPEND_SETTINGS' | 'SELECT_DAYS';
 
 const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, onUpdateSettings }) => {
   const { t, dir } = useLanguage();
@@ -35,6 +36,10 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
   const [stipendResults, setStipendResults] = useState<StipendResult[] | null>(null);
   const [monthYear, setMonthYear] = useState<string | null>(null);
   const [savedData, setSavedData] = useState<MonthlyData[]>([]);
+  
+  const [rawScholarsData, setRawScholarsData] = useState<any[] | null>(null);
+  const [activeDays, setActiveDays] = useState<Set<string>>(new Set());
+  const [selectedDays, setSelectedDays] = useState<Set<string>>(new Set());
 
   const [error, setError] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
@@ -112,11 +117,13 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
           throw new Error('Could not read file content');
         }
 
-        const { monthYear: newMonthYear, results } = parseXlsxAndCalculateStipends(content as ArrayBuffer, kollelDetails, file.name);
+        const { monthYear: newMonthYear, scholarsData, activeDays: parsedActiveDays } = parseXlsx(content as ArrayBuffer, kollelDetails, file.name);
 
-        setStipendResults(results);
+        setRawScholarsData(scholarsData);
+        setActiveDays(parsedActiveDays);
+        setSelectedDays(new Set(parsedActiveDays));
         setMonthYear(newMonthYear);
-        setView('SHOW_RESULTS');
+        setView('SELECT_DAYS');
 
       } catch (err) {
         if (err instanceof Error) {
@@ -218,6 +225,116 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
       if (!prevResults) return null;
       return prevResults.map(r => r.name === updatedResult.name ? updatedResult : r);
     });
+  };
+
+  const handleCalculateStipends = () => {
+    if (!rawScholarsData || !monthYear) return;
+    
+    setIsLoading(true);
+    try {
+      const allResults: StipendResult[] = [];
+      rawScholarsData.forEach(scholarData => {
+        const scholarResult = calculateStipendForScholar(scholarData, kollelDetails.settings, selectedDays, monthYear);
+        allResults.push(scholarResult);
+      });
+      allResults.sort((a, b) => a.name.localeCompare(b.name, 'he'));
+      
+      setStipendResults(allResults);
+      setView('SHOW_RESULTS');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('error'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const renderSelectDaysView = () => {
+    const sortedDays = Array.from(activeDays).sort((a, b) => parseInt(a) - parseInt(b));
+    
+    return (
+      <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-8">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-semibold">{t('select_active_days') || 'בחירת ימי פעילות'}</h2>
+          <button onClick={resetToChoice} className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+            <BackIcon className="w-6 h-6" />
+          </button>
+        </div>
+        
+        <p className="mb-6 text-slate-600 dark:text-slate-300">
+          {t('select_active_days_desc') || 'בחר את הימים שייכללו בחישוב המלגות. ימים שלא יסומנו ייחשבו כימי חופש ולא ירדו עליהם קנסות.'}
+        </p>
+
+        <div className="mb-6 flex gap-4">
+          <button 
+            onClick={() => setSelectedDays(new Set(activeDays))}
+            className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
+          >
+            {t('select_all') || 'בחר הכל'}
+          </button>
+          <button 
+            onClick={() => setSelectedDays(new Set())}
+            className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
+          >
+            {t('deselect_all') || 'נקה הכל'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3 mb-8">
+          {sortedDays.map(day => {
+            const dow = getDayOfWeek(day, monthYear);
+            const dayNames = ['א\'', 'ב\'', 'ג\'', 'ד\'', 'ה\'', 'ו\'', 'ש\''];
+            const isWeekend = dow === 5 || dow === 6;
+            return (
+            <label 
+              key={day} 
+              className={`flex flex-col items-center justify-center p-3 rounded-lg border cursor-pointer transition-colors ${
+                selectedDays.has(day) 
+                  ? 'bg-blue-50 border-blue-500 dark:bg-blue-900/30 dark:border-blue-400' 
+                  : isWeekend 
+                    ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40'
+                    : 'bg-slate-50 border-slate-200 dark:bg-slate-700 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600'
+              }`}
+            >
+              <input 
+                type="checkbox" 
+                className="sr-only"
+                checked={selectedDays.has(day)}
+                onChange={(e) => {
+                  const newSelected = new Set(selectedDays);
+                  if (e.target.checked) {
+                    newSelected.add(day);
+                  } else {
+                    newSelected.delete(day);
+                  }
+                  setSelectedDays(newSelected);
+                }}
+              />
+              <span className={`text-lg font-bold ${selectedDays.has(day) ? 'text-blue-700 dark:text-blue-300' : isWeekend ? 'text-red-600 dark:text-red-400' : 'text-slate-600 dark:text-slate-400'}`}>
+                {day}
+              </span>
+              <span className={`text-xs mt-1 ${selectedDays.has(day) ? 'text-blue-500 dark:text-blue-400' : isWeekend ? 'text-red-500 dark:text-red-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                {dayNames[dow]}
+              </span>
+            </label>
+          )})}
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            onClick={handleCalculateStipends}
+            disabled={isLoading || selectedDays.size === 0}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {isLoading ? (
+              <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span>
+            ) : (
+              <ChartIcon className="w-5 h-5" />
+            )}
+            {t('calculate') || 'חשב מלגות'}
+          </button>
+        </div>
+      </div>
+    );
   };
 
   const isCurrentMonthSaved = monthYear ? savedData.some(d => d.monthYear === monthYear) : false;
@@ -410,6 +527,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kollelDetails, onSwitchKollel, on
       case 'SHOW_RESULTS': return renderResultsView();
       case 'REPORTS': return <Reports savedData={savedData} onBack={resetToChoice} kollelDetails={kollelDetails} />;
       case 'STIPEND_SETTINGS': return renderStipendSettingsView();
+      case 'SELECT_DAYS': return renderSelectDaysView();
     }
   };
 

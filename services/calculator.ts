@@ -7,7 +7,7 @@ const timeToDecimal = (timeStr: string): number => {
     return hours + minutes / 60;
 };
 
-const getDayOfWeek = (dayInput: string, monthYearContext?: string | null): number => {
+export const getDayOfWeek = (dayInput: string, monthYearContext?: string | null): number => {
     try {
         if (dayInput.includes('/')) {
             const parts = dayInput.split('/');
@@ -59,11 +59,17 @@ export const calculateStipendForScholar = (
         if (dayNumMatch) {
             // Normalize "01" to "1"
             const key = String(parseInt(dayNumMatch[0], 10));
-            detailsByDay.set(key, JSON.parse(JSON.stringify(d)));
+            const copiedDetail = JSON.parse(JSON.stringify(d));
+            if (activeDays && !activeDays.has(key)) {
+                copiedDetail.rawTime = 'חופש';
+                // Clear out hours so it doesn't look like they attended on a holiday if we don't want to show it
+                copiedDetail.sederHours = {};
+            }
+            detailsByDay.set(key, copiedDetail);
         }
     });
 
-    const relevantDays = activeDays ? Array.from(activeDays) : details.map(d => d.day.match(/^\d+/)?.[0]).filter(Boolean) as string[];
+    const relevantDays = details.map(d => d.day.match(/^\d+/)?.[0]).filter(Boolean) as string[];
     relevantDays.forEach(dayNum => {
         const key = String(parseInt(dayNum, 10));
         const dow = getDayOfWeek(dayNum, currentMonthYear);

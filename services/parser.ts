@@ -214,22 +214,12 @@ const processMultiScholarSheet = (
     }
 
     const activeDays = new Set<string>();
+    Object.values(columnMap).forEach(info => {
+        const match = info.date.match(/^(\d+)/);
+        if (match) activeDays.add(String(parseInt(match[1], 10)));
+    });
+
     const dailyDataColIndices = Object.keys(columnMap).map(Number);
-
-    for (let i = dataStartRow; i < rows.length; i++) {
-        const row = rows[i];
-        if (!row) continue;
-        const name = normalizeCellString(row[nameColIndex] || '');
-        if (!name || name.includes('סה"כ')) continue;
-
-        for (const colIndex of dailyDataColIndices) {
-            const cellValue = row[colIndex];
-            if (cellValue && normalizeCellString(cellValue) !== '') {
-                const mapInfo = columnMap[colIndex];
-                if (mapInfo) activeDays.add(mapInfo.date);
-            }
-        }
-    }
 
     const bonusColMap: { [bonusName: string]: number } = {};
     const dailyDataCols = new Set(Object.keys(columnMap).map(Number));
@@ -580,12 +570,11 @@ const processSingleScholarSheet = (
 };
 
 
-export const parseXlsxAndCalculateStipends = (xlsxBuffer: ArrayBuffer, kollelDetails: KollelDetails, fileName?: string): ParseResult => {
+export const parseXlsx = (xlsxBuffer: ArrayBuffer, kollelDetails: KollelDetails, fileName?: string): { monthYear: string, scholarsData: any[], activeDays: Set<string> } => {
     const XLSX = (window as any).XLSX;
     if (!XLSX) throw new Error('ספריית עיבוד קבצי האקסל (XLSX) לא נטענה.');
 
     const workbook = XLSX.read(xlsxBuffer, { type: 'array' });
-    const allResults: StipendResult[] = [];
     let commonMonthYear: string | null = null;
 
     const settings = ensureSettingsCompatibility(kollelDetails.settings);
@@ -602,17 +591,15 @@ export const parseXlsxAndCalculateStipends = (xlsxBuffer: ArrayBuffer, kollelDet
         const firstSheetRowsRaw: (string | number)[][] = XLSX.utils.sheet_to_json(firstWorksheet, { header: 1, raw: true, defval: '' });
         try {
             const { scholarsData, monthYear, activeDays } = processMultiScholarSheet(firstSheetRowsRaw, settings, fileName);
-            commonMonthYear = monthYear;
-            scholarsData.forEach(scholarData => {
-                const scholarResult = calculateStipendForScholar(scholarData, settings, activeDays, monthYear);
-                allResults.push(scholarResult);
-            });
+            return { monthYear, scholarsData, activeDays };
         } catch (e) {
             console.error(`שגיאה בעיבוד גיליון "${firstSheetName}" בפורמט החדש: ${(e as Error).message}.`);
             throw e;
         }
 
     } else {
+        const allScholarsData: any[] = [];
+        const activeDays = new Set<string>();
         for (const sheetName of workbook.SheetNames) {
             const worksheet = workbook.Sheets[sheetName];
             if (!worksheet) continue;
@@ -623,22 +610,24 @@ export const parseXlsxAndCalculateStipends = (xlsxBuffer: ArrayBuffer, kollelDet
             try {
                 const { name, details, monthYear, bonusData } = processSingleScholarSheet(rows, sheetName, settings);
                 if (!commonMonthYear) commonMonthYear = monthYear;
+                
+                details.forEach(d => {
+                    const match = d.day.match(/^(\d+)/);
+                    if (match) activeDays.add(String(parseInt(match[1], 10)));
+                });
 
-                const scholarResult = calculateStipendForScholar({ name, details, bonusData }, settings, null, monthYear);
-                allResults.push(scholarResult);
-
+                allScholarsData.push({ name, details, bonusData });
             } catch (e) {
                 console.warn(`שגיאה בעיבוד גיליון "${sheetName}": ${(e as Error).message}.`);
             }
         }
+        if (allScholarsData.length === 0) throw new Error('לא נמצאו נתוני אברכים תקינים בקובץ.');
+        if (!commonMonthYear) throw new Error('לא ניתן היה לקבוע את חודש הדוח.');
+        return { monthYear: commonMonthYear, scholarsData: allScholarsData, activeDays };
     }
-
-    if (allResults.length === 0) throw new Error('לא נמצאו נתוני אברכים תקינים בקובץ.');
-    if (!commonMonthYear) throw new Error('לא ניתן היה לקבוע את חודש הדוח.');
-
-    allResults.sort((a, b) => a.name.localeCompare(b.name, 'he'));
-    return { monthYear: commonMonthYear, results: allResults };
 };
+
+// Removed parseXlsxAndCalculateStipends as it's no longer used
 
 const ensureSettingsCompatibility = (settings: StipendSettings): StipendSettings => {
     let compatible: StipendSettings = JSON.parse(JSON.stringify(settings));
